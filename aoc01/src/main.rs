@@ -25,7 +25,7 @@ fn parse_lines(lines: &Vec<String>) -> (Vec<u32>, Vec<u32>) {
 }
 
 fn compute_sorted_diff(vs: &mut (Vec<u32>, Vec<u32>)) -> u32 {
-    let mut diff: u32 = 0;
+    let mut diff = 0;
     let v1 = &mut vs.0;
     let v2 = &mut vs.1;
     v1.sort();
@@ -42,6 +42,19 @@ fn compute_sorted_diff(vs: &mut (Vec<u32>, Vec<u32>)) -> u32 {
     diff
 }
 
+fn compute_similarity(vs: (Vec<u32>, Vec<u32>)) -> u32 {
+    let mut similarity = 0;
+    let v1 = vs.0;
+    let v2 = vs.1;
+
+    assert!(v1.len() == v2.len());
+    for vl in &v1 {
+        similarity += v2.iter().filter(|&x| x == vl).sum::<u32>();
+    }
+    println!("similarity: {}", similarity);
+    similarity
+}
+
 #[test]
 fn test_prelim() {
     let diff = compute_sorted_diff(&mut parse_lines(&get_input("prelim.txt")));
@@ -49,12 +62,25 @@ fn test_prelim() {
 }
 
 #[test]
+fn test_prelim2() {
+    let similarity = compute_similarity(parse_lines(&get_input("prelim.txt")));
+    assert_eq!(similarity, 31);
+}
+#[test]
 fn test_part1() {
     let diff = compute_sorted_diff(&mut parse_lines(&get_input("input.txt")));
     assert_eq!(diff, 1222801);
 }
 
+#[test]
+fn test_part2() {
+    let similarity = compute_similarity(parse_lines(&get_input("input.txt")));
+    assert_eq!(similarity, 22545250);
+}
+
 fn main() {
     compute_sorted_diff(&mut parse_lines(&get_input("prelim.txt")));
     compute_sorted_diff(&mut parse_lines(&get_input("input.txt")));
+    compute_similarity(parse_lines(&get_input("prelim.txt")));
+    compute_similarity(parse_lines(&get_input("input.txt")));
 }
