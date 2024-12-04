@@ -14,7 +14,7 @@ fn get_input(filename: &str) -> Vec<String> {
     lines
 }
 
-fn parse_muls(lines: &Vec<String>) -> u32 {
+fn sum_of_multiplies(lines: &Vec<String>) -> u32 {
     let mut sum = 0;
     let re = Regex::new(r"mul\(([0-9]{1,3}),([0-9]{1,3})\)").unwrap();
 
@@ -122,7 +122,7 @@ fn parse_mul(chars: &Vec<char>, pos: usize) -> Option<(u32, usize)> {
     Some((product, new_pos + 1))  // Skipping rparen
 }
 
-fn parse_muls_part2(lines: &Vec<String>) -> u32 {
+fn sum_of_enabled_multiplies(lines: &Vec<String>) -> u32 {
     let mut sum = 0;
     let mut enabled = true;
     for line in lines {
@@ -163,31 +163,31 @@ fn parse_muls_part2(lines: &Vec<String>) -> u32 {
 
 #[test]
 fn test_prelim() {
-    let sum = parse_muls(&get_input("prelim.txt"));
+    let sum = sum_of_multiplies(&get_input("prelim.txt"));
     assert_eq!(sum, 161);
 }
 
 #[test]
 fn test_part1() {
-    let sum = parse_muls(&get_input("input.txt"));
+    let sum = sum_of_multiplies(&get_input("input.txt"));
     assert_eq!(sum, 188116424);
 }
 
 #[test]
 fn test_prelim2() {
-    let sum = parse_muls_part2(&get_input("prelim2.txt"));
+    let sum = sum_of_enabled_multiplies(&get_input("prelim2.txt"));
     assert_eq!(sum, 48);
 }
 
 #[test]
 fn test_part2() {
-    let sum = parse_muls_part2(&get_input("input.txt"));
+    let sum = sum_of_enabled_multiplies(&get_input("input.txt"));
     assert_eq!(sum, 104245808);
 }
 
 fn main() {
-    parse_muls(&get_input("prelim.txt"));
-    parse_muls(&get_input("input.txt"));
-    parse_muls_part2(&get_input("prelim2.txt"));
-    parse_muls_part2(&get_input("input.txt"));
+    sum_of_multiplies(&get_input("prelim.txt"));
+    sum_of_multiplies(&get_input("input.txt"));
+    sum_of_enabled_multiplies(&get_input("prelim2.txt"));
+    sum_of_enabled_multiplies(&get_input("input.txt"));
 }
