@@ -14,7 +14,14 @@ fn get_input(filename: &str) -> Vec<String> {
     lines
 }
 
-fn sum_of_multiplies(lines: &Vec<String>) -> u32 {
+#[derive(PartialEq)]
+enum CheckEnabled {
+    Checked,
+    Unchecked,
+}
+
+// This was my first solution to part 1, which works nicely, but I needed a better parser for part 2
+fn sum_of_multiplies_regex(lines: &Vec<String>) -> u32 {
     let mut sum = 0;
     let re = Regex::new(r"mul\(([0-9]{1,3}),([0-9]{1,3})\)").unwrap();
 
@@ -25,7 +32,7 @@ fn sum_of_multiplies(lines: &Vec<String>) -> u32 {
             sum += l * r;
         }
     }
-    println!("Sum: {}", sum);
+    println!("Sum (regex): {}", sum);
     sum
 }
 
@@ -89,6 +96,7 @@ fn parse_dont(chars: &Vec<char>, pos: usize) -> Option<usize> {
     }
 }
 
+// Returns product and new cursor position if we parsed the regex r"mul\([0-9]{1,3},[0-9]{1,3}\)"
 fn parse_mul(chars: &Vec<char>, pos: usize) -> Option<(u32, usize)> {
     let len = chars.len();
 
@@ -102,7 +110,7 @@ fn parse_mul(chars: &Vec<char>, pos: usize) -> Option<(u32, usize)> {
         return None;
     }
 
-    // Time to parse some integers (skipping "mul(")
+    // Time to parse some integers skipping "mul("
     let (lhs, new_pos) = parse_up_to_3_digits(&chars, pos + 4)?;
 
     // Still need to parse at least ",1)"
@@ -119,10 +127,10 @@ fn parse_mul(chars: &Vec<char>, pos: usize) -> Option<(u32, usize)> {
     }
 
     let product = lhs * rhs;
-    Some((product, new_pos + 1))  // Skipping rparen
+    Some((product, new_pos + 1)) // Skipping rparen
 }
 
-fn sum_of_enabled_multiplies(lines: &Vec<String>) -> u32 {
+fn sum_of_multiplies(lines: &Vec<String>, check: CheckEnabled) -> u32 {
     let mut sum = 0;
     let mut enabled = true;
     for line in lines {
@@ -137,7 +145,10 @@ fn sum_of_enabled_multiplies(lines: &Vec<String>) -> u32 {
                         pos = new_pos;
                         continue;
                     } else if let Some(new_pos) = parse_dont(&chars, pos) {
-                        enabled = false;
+                        // Only disable if we've enabled checked multiplies
+                        if check == CheckEnabled::Checked {
+                            enabled = false;
+                        }
                         pos = new_pos;
                         continue;
                     }
@@ -157,19 +168,36 @@ fn sum_of_enabled_multiplies(lines: &Vec<String>) -> u32 {
             pos += 1;
         }
     }
-    println!("Sum (do/don't): {}", sum);
+    let check_msg = if check == CheckEnabled::Unchecked {
+        "unchecked"
+    } else {
+        "checked"
+    };
+    println!("Sum ({}): {}", check_msg, sum);
     sum
+}
+
+fn sum_of_all_multiplies(lines: &Vec<String>) -> u32 {
+    sum_of_multiplies(lines, CheckEnabled::Unchecked)
+}
+
+fn sum_of_enabled_multiplies(lines: &Vec<String>) -> u32 {
+    sum_of_multiplies(lines, CheckEnabled::Checked)
 }
 
 #[test]
 fn test_prelim() {
-    let sum = sum_of_multiplies(&get_input("prelim.txt"));
+    let sum = sum_of_all_multiplies(&get_input("prelim.txt"));
+    assert_eq!(sum, 161);
+    let sum = sum_of_multiplies_regex(&get_input("prelim.txt"));
     assert_eq!(sum, 161);
 }
 
 #[test]
 fn test_part1() {
-    let sum = sum_of_multiplies(&get_input("input.txt"));
+    let sum = sum_of_all_multiplies(&get_input("input.txt"));
+    assert_eq!(sum, 188116424);
+    let sum = sum_of_multiplies_regex(&get_input("input.txt"));
     assert_eq!(sum, 188116424);
 }
 
@@ -186,8 +214,10 @@ fn test_part2() {
 }
 
 fn main() {
-    sum_of_multiplies(&get_input("prelim.txt"));
-    sum_of_multiplies(&get_input("input.txt"));
+    sum_of_multiplies_regex(&get_input("prelim.txt"));
+    sum_of_multiplies_regex(&get_input("input.txt"));
+    sum_of_all_multiplies(&get_input("prelim.txt"));
+    sum_of_all_multiplies(&get_input("input.txt"));
     sum_of_enabled_multiplies(&get_input("prelim2.txt"));
     sum_of_enabled_multiplies(&get_input("input.txt"));
 }
