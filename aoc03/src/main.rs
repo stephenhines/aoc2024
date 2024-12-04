@@ -58,6 +58,36 @@ fn parse_up_to_3_digits(chars: &Vec<char>, pos: usize) -> Option<(u32, usize)> {
     Some((val, new_pos))
 }
 
+// Returns new cursor position if we parsed "do()"
+fn parse_do(chars: &Vec<char>, pos: usize) -> Option<usize> {
+    if pos + 3 < chars.len()
+        && chars[pos + 0] == 'd'
+        && chars[pos + 1] == 'o'
+        && chars[pos + 2] == '('
+        && chars[pos + 3] == ')'
+    {
+        Some(pos + 4)
+    } else {
+        None
+    }
+}
+
+// Returns new cursor position if we parsed "don't()"
+fn parse_dont(chars: &Vec<char>, pos: usize) -> Option<usize> {
+    if pos + 6 < chars.len()
+        && chars[pos + 0] == 'd'
+        && chars[pos + 1] == 'o'
+        && chars[pos + 2] == 'n'
+        && chars[pos + 3] == '\''
+        && chars[pos + 4] == 't'
+        && chars[pos + 5] == '('
+        && chars[pos + 6] == ')'
+    {
+        Some(pos + 7)
+    } else {
+        None
+    }
+}
 fn parse_muls_part2(lines: &Vec<String>) -> u32 {
     let mut sum = 0;
     let mut enabled = true;
@@ -69,24 +99,13 @@ fn parse_muls_part2(lines: &Vec<String>) -> u32 {
             match chars[i] {
                 'd' => {
                     // Look at i + 3 since we minimally need to handle at least "do()"
-                    if i + 3 < len
-                        && chars[i + 1] == 'o'
-                        && chars[i + 2] == '('
-                        && chars[i + 3] == ')'
-                    {
+                    if let Some(new_pos) = parse_do(&chars, i) {
                         enabled = true;
-                        i += 4;
+                        i = new_pos;
                         continue;
-                    } else if i + 6 < len
-                        && chars[i + 1] == 'o'
-                        && chars[i + 2] == 'n'
-                        && chars[i + 3] == '\''
-                        && chars[i + 4] == 't'
-                        && chars[i + 5] == '('
-                        && chars[i + 6] == ')'
-                    {
+                    } else if let Some(new_pos) = parse_dont(&chars, i) {
                         enabled = false;
-                        i += 7;
+                        i = new_pos;
                         continue;
                     }
                 }
