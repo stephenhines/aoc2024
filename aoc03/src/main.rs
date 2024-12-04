@@ -88,56 +88,73 @@ fn parse_dont(chars: &Vec<char>, pos: usize) -> Option<usize> {
         None
     }
 }
+
+fn parse_mul(chars: &Vec<char>, pos: usize) -> Option<(u32, usize)> {
+    let len = chars.len();
+
+    // Look at pos + 7 since we minimally need to handle at least "mul(1,1)"
+    if pos + 7 >= len
+        || chars[pos + 0] != 'm'
+        || chars[pos + 1] != 'u'
+        || chars[pos + 2] != 'l'
+        || chars[pos + 3] != '('
+    {
+        return None;
+    }
+
+    // Time to parse some integers (skipping "mul(")
+    let (lhs, new_pos) = parse_up_to_3_digits(&chars, pos + 4)?;
+
+    // Still need to parse at least ",1)"
+    if new_pos + 3 >= len || chars[new_pos] != ',' {
+        return None;
+    }
+
+    // Skipping comma
+    let (rhs, new_pos) = parse_up_to_3_digits(&chars, new_pos + 1)?;
+
+    // Check for trailing parentheses before finishing
+    if new_pos >= len || chars[new_pos] != ')' {
+        return None;
+    }
+
+    let product = lhs * rhs;
+    Some((product, new_pos + 1))  // Skipping rparen
+}
+
 fn parse_muls_part2(lines: &Vec<String>) -> u32 {
     let mut sum = 0;
     let mut enabled = true;
     for line in lines {
         let chars: Vec<char> = line.chars().collect();
         let len = chars.len();
-        let mut i = 0;
-        while i < len {
-            match chars[i] {
+        let mut pos = 0;
+        while pos < len {
+            match chars[pos] {
                 'd' => {
-                    // Look at i + 3 since we minimally need to handle at least "do()"
-                    if let Some(new_pos) = parse_do(&chars, i) {
+                    if let Some(new_pos) = parse_do(&chars, pos) {
                         enabled = true;
-                        i = new_pos;
+                        pos = new_pos;
                         continue;
-                    } else if let Some(new_pos) = parse_dont(&chars, i) {
+                    } else if let Some(new_pos) = parse_dont(&chars, pos) {
                         enabled = false;
-                        i = new_pos;
+                        pos = new_pos;
                         continue;
                     }
                 }
                 'm' => {
-                    // Look at i + 7 since we minimally need to handle at least "mul(1,1)"
-                    if enabled && i + 7 < len {
-                        if chars[i + 1] == 'u' && chars[i + 2] == 'l' && chars[i + 3] == '(' {
-                            // Time to parse some integers
-                            i += 4;
-                            if let Some((lhs, new_pos)) = parse_up_to_3_digits(&chars, i) {
-                                i = new_pos;
-                                // Still need to parse at least ",1)"
-                                if i + 3 < len && chars[i] == ',' {
-                                    i += 1;
-                                    if let Some((rhs, new_pos)) = parse_up_to_3_digits(&chars, i) {
-                                        i = new_pos;
-                                        // Check for trailing parentheses before finishing
-                                        if i < len && chars[i] == ')' {
-                                            sum += lhs * rhs;
-                                            i += 1;  // These seem redundant, but I prefer being clear that this parsed
-                                            continue;
-                                        }
-                                    }
-                                }
-                            }
+                    if enabled {
+                        if let Some((product, new_pos)) = parse_mul(&chars, pos) {
+                            sum += product;
+                            pos = new_pos;
+                            continue;
                         }
                     }
                 }
                 _ => {}
             }
             // If we get here, we're done with the current token and just start at the next one
-            i += 1;
+            pos += 1;
         }
     }
     println!("Sum (do/don't): {}", sum);
