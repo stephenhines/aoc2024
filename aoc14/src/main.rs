@@ -1,3 +1,4 @@
+use std::fmt;
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
@@ -85,7 +86,6 @@ impl Robot {
     }
 }
 
-#[derive(Debug)]
 struct Grid {
     width: usize,
     height: usize,
@@ -106,7 +106,7 @@ impl Grid {
         }
     }
 
-    fn advance_time(&mut self, time: usize) -> &Self {
+    fn advance_time(&mut self, time: usize) -> &mut Self {
         self.robots
             .iter_mut()
             .for_each(|r| r.advance(time, self.width, self.height));
@@ -149,21 +149,64 @@ impl Grid {
         println!("Safety: {}", safety);
         safety
     }
+
+    fn find_tree(&mut self) -> usize {
+        let mut iter = 83; // Discovered after looking at first several hundred inputs and seeing large vertical bands
+        self.advance_time(83);
+        while iter < self.width * self.height {
+            dbg!(iter);
+            dbg!(&self);
+
+            self.advance_time(self.width);
+            iter += self.width;
+        }
+        0
+    }
+}
+
+impl fmt::Debug for Grid {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(fmt, "")?;
+        let mut points: [[char; WIDTH]; HEIGHT] = [[' '; WIDTH]; HEIGHT];
+        for robot in &self.robots {
+            points[robot.pos.y][robot.pos.x] = '*';
+        }
+        for y in 0..self.height {
+            for x in 0..self.width {
+                write!(fmt, "{}", points[y][x])?;
+            }
+            writeln!(fmt, "")?;
+        }
+        Ok(())
+    }
 }
 
 #[test]
 fn test_prelim() {
-    let safety = Grid::create_grid(PRE_WIDTH, PRE_HEIGHT, &get_input("prelim.txt")).advance_time(100).compute_safety();
+    let safety = Grid::create_grid(PRE_WIDTH, PRE_HEIGHT, &get_input("prelim.txt"))
+        .advance_time(100)
+        .compute_safety();
     assert_eq!(safety, 12);
 }
 
 #[test]
 fn test_part1() {
-    let safety = Grid::create_grid(WIDTH, HEIGHT, &get_input("input.txt")).advance_time(100).compute_safety();
+    let safety = Grid::create_grid(WIDTH, HEIGHT, &get_input("input.txt"))
+        .advance_time(100)
+        .compute_safety();
     assert_eq!(safety, 218619324);
 }
 
 fn main() {
-    Grid::create_grid(PRE_WIDTH, PRE_HEIGHT, &get_input("prelim.txt")).advance_time(100).compute_safety();
-    Grid::create_grid(WIDTH, HEIGHT, &get_input("input.txt")).advance_time(100).compute_safety();
+    Grid::create_grid(PRE_WIDTH, PRE_HEIGHT, &get_input("prelim.txt"))
+        .advance_time(100)
+        .compute_safety();
+    Grid::create_grid(WIDTH, HEIGHT, &get_input("input.txt"))
+        .advance_time(100)
+        .compute_safety();
+    let i = Grid::create_grid(WIDTH, HEIGHT, &get_input("input.txt")).find_tree();
+    println!("i: {}", i);
+    let mut grid = Grid::create_grid(WIDTH, HEIGHT, &get_input("input.txt"));
+    grid.advance_time(6446);
+    println!("{:?}", grid);
 }
