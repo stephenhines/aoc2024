@@ -24,7 +24,7 @@ fn create_from_3bit(val: &Vec<u8>) -> u64 {
 
 #[derive(Debug)]
 #[repr(u8)]
-enum OPCODE {
+enum Opcode {
     Adv = 0,
     Bxl = 1,
     Bst = 2,
@@ -35,17 +35,17 @@ enum OPCODE {
     Cdv = 7,
 }
 
-impl From<u8> for OPCODE {
-    fn from(v: u8) -> OPCODE {
+impl From<u8> for Opcode {
+    fn from(v: u8) -> Opcode {
         match v {
-            0 => OPCODE::Adv,
-            1 => OPCODE::Bxl,
-            2 => OPCODE::Bst,
-            3 => OPCODE::Jnz,
-            4 => OPCODE::Bxc,
-            5 => OPCODE::Out,
-            6 => OPCODE::Bdv,
-            7 => OPCODE::Cdv,
+            0 => Opcode::Adv,
+            1 => Opcode::Bxl,
+            2 => Opcode::Bst,
+            3 => Opcode::Jnz,
+            4 => Opcode::Bxc,
+            5 => Opcode::Out,
+            6 => Opcode::Bdv,
+            7 => Opcode::Cdv,
             _ => {
                 panic!("Unhandled Opcode {}", v);
             }
@@ -123,7 +123,7 @@ impl Computer {
         }
     }
 
-    fn get_opcode(&self) -> OPCODE {
+    fn get_opcode(&self) -> Opcode {
         self.program[self.ip].into()
     }
 
@@ -133,22 +133,22 @@ impl Computer {
         }
         let opcode = self.get_opcode();
         match opcode {
-            OPCODE::Adv | OPCODE::Bdv | OPCODE::Cdv => {
-                // Rx = Rx / 2^(combo_operand)
-                let numerator = self.register_a;
+            Opcode::Adv | Opcode::Bdv | Opcode::Cdv => {
+                // Rx = Ra / 2^(combo_operand)
+                //   OR
+                // Rx = Ra >> combo_operand
                 let operand = self.program[self.ip + 1];
                 let combo_operand = self.read_combo_operand(operand) as u32;
-                let denominator = 2u64.pow(combo_operand);
-                let div = numerator / denominator;
+                let shift = self.register_a >> combo_operand;
                 match opcode {
-                    OPCODE::Adv => {
-                        self.register_a = div;
+                    Opcode::Adv => {
+                        self.register_a = shift;
                     }
-                    OPCODE::Bdv => {
-                        self.register_b = div;
+                    Opcode::Bdv => {
+                        self.register_b = shift;
                     }
-                    OPCODE::Cdv => {
-                        self.register_c = div;
+                    Opcode::Cdv => {
+                        self.register_c = shift;
                     }
                     _ => {
                         unreachable!();
@@ -156,20 +156,20 @@ impl Computer {
                 }
                 self.ip += 2;
             }
-            OPCODE::Bxl => {
+            Opcode::Bxl => {
                 // B = bitwise XOR of literal operand with register B
                 let literal_operand = self.program[self.ip + 1] as u64;
                 self.register_b ^= literal_operand;
                 self.ip += 2;
             }
-            OPCODE::Bst => {
+            Opcode::Bst => {
                 // B = combo_operand % 8
                 let operand = self.program[self.ip + 1];
                 let combo_operand = self.read_combo_operand(operand);
                 self.register_b = combo_operand % 8;
                 self.ip += 2;
             }
-            OPCODE::Jnz => {
+            Opcode::Jnz => {
                 // Jump to literal_operand if A != 0
                 if self.register_a == 0 {
                     self.ip += 2;
@@ -178,12 +178,12 @@ impl Computer {
                     self.ip = literal_operand as usize;
                 }
             }
-            OPCODE::Bxc => {
+            Opcode::Bxc => {
                 // B = B ^ C
                 self.register_b ^= self.register_c;
                 self.ip += 2;
             }
-            OPCODE::Out => {
+            Opcode::Out => {
                 // Output combo_operand % 8
                 let operand = self.program[self.ip + 1];
                 let combo_operand = self.read_combo_operand(operand);
@@ -220,10 +220,7 @@ impl Computer {
     fn find_quine(&mut self) -> u64 {
         // Our register_a value really needs to be the same length as the program
         let prog_len = self.program.len();
-        let mut try_a_vec = Vec::new();
-        for _ in 0..prog_len {
-            try_a_vec.push(0);
-        }
+        let mut try_a_vec = vec![0; prog_len];
         let start_b = self.register_b;
         let start_c = self.register_c;
 
@@ -264,11 +261,11 @@ impl Computer {
             loop {
                 let test_val = try_a_vec[test_index];
                 if test_val == 7 {
-                    // If we run out, we need to go back in indices
-                    // Reset subsequent values
-                    for i in test_index..prog_len {
-                        try_a_vec[i] = 0;
-                    }
+                    // If we run out of bits in our trio, we need to go back in indices.
+                    // Reset subsequent values.
+                    try_a_vec.iter_mut().skip(test_index).for_each(|x| {
+                        *x = 0;
+                    });
                     test_index -= 1;
                 } else {
                     try_a_vec[test_index] += 1;
