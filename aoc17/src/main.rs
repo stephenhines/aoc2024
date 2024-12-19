@@ -13,6 +13,15 @@ fn get_input(filename: &str) -> Vec<String> {
     lines
 }
 
+fn create_from_3bit(val: &Vec<u8>) -> u64 {
+    let mut result = 0;
+    for v in val {
+        result <<= 3;
+        result |= *v as u64;
+    }
+    result
+}
+
 #[derive(Debug)]
 #[repr(u8)]
 enum OPCODE {
@@ -37,7 +46,9 @@ impl From<u8> for OPCODE {
             5 => OPCODE::Out,
             6 => OPCODE::Bdv,
             7 => OPCODE::Cdv,
-            _ => { panic!("Unhandled Opcode {}", v); },
+            _ => {
+                panic!("Unhandled Opcode {}", v);
+            }
         }
     }
 }
@@ -62,32 +73,53 @@ impl Computer {
         let output = Vec::new();
         for line in lines {
             let toks: Vec<&str> = line.split_ascii_whitespace().collect();
-            if toks.is_empty() { continue; }
+            if toks.is_empty() {
+                continue;
+            }
             match toks[0] {
-                "Register" => {
-                    match toks[1] {
-                        "A:" => { register_a = toks[2].parse::<u64>().unwrap(); },
-                        "B:" => { register_b = toks[2].parse::<u64>().unwrap(); },
-                        "C:" => { register_c = toks[2].parse::<u64>().unwrap(); },
-                        _ => { panic!("Unhandled register: {}", line); },
+                "Register" => match toks[1] {
+                    "A:" => {
+                        register_a = toks[2].parse::<u64>().unwrap();
+                    }
+                    "B:" => {
+                        register_b = toks[2].parse::<u64>().unwrap();
+                    }
+                    "C:" => {
+                        register_c = toks[2].parse::<u64>().unwrap();
+                    }
+                    _ => {
+                        panic!("Unhandled register: {}", line);
                     }
                 },
                 "Program:" => {
-                    toks[1].split(',').for_each(|d| program.push(d.parse::<u8>().unwrap()));
-                },
-                _ => { panic!("Unknown line: {}", line); }
+                    toks[1]
+                        .split(',')
+                        .for_each(|d| program.push(d.parse::<u8>().unwrap()));
+                }
+                _ => {
+                    panic!("Unknown line: {}", line);
+                }
             }
         }
-        Computer { register_a, register_b, register_c, ip, program, output }
+        Computer {
+            register_a,
+            register_b,
+            register_c,
+            ip,
+            program,
+            output,
+        }
     }
 
     fn read_combo_operand(&self, operand: u8) -> u64 {
         match operand {
-            0..=3 => { operand as u64 },
-            4 => { self.register_a },
-            5 => { self.register_b },
-            6 => { self.register_c },
-            _ => { panic!("Invalid combo operand: {}", operand); }
+            0..=3 => operand as u64,
+            4 => self.register_a,
+            5 => self.register_b,
+            6 => self.register_c,
+            _ => {
+                panic!("Invalid combo operand: {}", operand);
+            }
         }
     }
 
@@ -109,26 +141,34 @@ impl Computer {
                 let denominator = 2u64.pow(combo_operand);
                 let div = numerator / denominator;
                 match opcode {
-                    OPCODE::Adv => { self.register_a = div; },
-                    OPCODE::Bdv => { self.register_b = div; },
-                    OPCODE::Cdv => { self.register_c = div; },
-                    _ => { unreachable!(); }
+                    OPCODE::Adv => {
+                        self.register_a = div;
+                    }
+                    OPCODE::Bdv => {
+                        self.register_b = div;
+                    }
+                    OPCODE::Cdv => {
+                        self.register_c = div;
+                    }
+                    _ => {
+                        unreachable!();
+                    }
                 }
                 self.ip += 2;
-            },
+            }
             OPCODE::Bxl => {
                 // B = bitwise XOR of literal operand with register B
                 let literal_operand = self.program[self.ip + 1] as u64;
                 self.register_b ^= literal_operand;
                 self.ip += 2;
-            },
+            }
             OPCODE::Bst => {
                 // B = combo_operand % 8
                 let operand = self.program[self.ip + 1];
                 let combo_operand = self.read_combo_operand(operand);
                 self.register_b = combo_operand % 8;
                 self.ip += 2;
-            },
+            }
             OPCODE::Jnz => {
                 // Jump to literal_operand if A != 0
                 if self.register_a == 0 {
@@ -137,12 +177,12 @@ impl Computer {
                     let literal_operand = self.program[self.ip + 1];
                     self.ip = literal_operand as usize;
                 }
-            },
+            }
             OPCODE::Bxc => {
                 // B = B ^ C
                 self.register_b ^= self.register_c;
                 self.ip += 2;
-            },
+            }
             OPCODE::Out => {
                 // Output combo_operand % 8
                 let operand = self.program[self.ip + 1];
@@ -155,7 +195,7 @@ impl Computer {
     }
 
     fn run_program(&mut self) -> String {
-        while self.step() {};
+        while self.step() {}
         let mut result = String::new();
         let mut first = true;
         for o in &self.output {
@@ -168,7 +208,76 @@ impl Computer {
         }
         result
     }
-} 
+
+    fn reset(&mut self, start_a: u64, start_b: u64, start_c: u64) {
+        self.register_a = start_a;
+        self.register_b = start_b;
+        self.register_c = start_c;
+        self.ip = 0;
+        self.output.clear();
+    }
+
+    fn find_quine(&mut self) -> u64 {
+        // Our register_a value really needs to be the same length as the program
+        let prog_len = self.program.len();
+        let mut try_a_vec = Vec::new();
+        for _ in 0..prog_len {
+            try_a_vec.push(0);
+        }
+        let start_b = self.register_b;
+        let start_c = self.register_c;
+
+        // test_index is where we start from in our vector of register_a values to try.
+        // We move from most significant to least significant 3-bit groups as we search
+        // for the correct answer.
+        let mut test_index = 0;
+        loop {
+            let start_a = create_from_3bit(&try_a_vec);
+            self.reset(start_a, start_b, start_c);
+            self.run_program();
+
+            // Success!
+            if self.output == self.program {
+                return start_a;
+            }
+
+            // We only need to examine the least significant 3-bit groupings from the program to
+            // determine if we're still on a valid path towards a solution. The prog_len check is
+            // necessary because some attempted register_a values might not produce enough 3-bit
+            // groupings at all to look for the "last" few trios.
+            let mirror_index = prog_len - test_index - 1;
+            if self.output.len() == prog_len
+                && self.output[mirror_index] == self.program[mirror_index]
+            {
+                // Keep advancing forward in this case. We continue because we might have gotten
+                // multiple digits correct already, but this makes for simpler logic to not start
+                // jumping too far ahead.
+                test_index += 1;
+                continue;
+            }
+
+            // If we're still not correct for this particular bit trio, we need to increment.
+            // Unfortunately, if we are at the end of our 3-bit trio values, we need to reset
+            // all subsequent trios back to 0, and then go back an index and potentially
+            // increment that location. Of course, we can have multiple values of 7 in a row,
+            // which results in continuing to apply this strategy.
+            loop {
+                let test_val = try_a_vec[test_index];
+                if test_val == 7 {
+                    // If we run out, we need to go back in indices
+                    // Reset subsequent values
+                    for i in test_index..prog_len {
+                        try_a_vec[i] = 0;
+                    }
+                    test_index -= 1;
+                } else {
+                    try_a_vec[test_index] += 1;
+                    break;
+                }
+            }
+        }
+    }
+}
 
 #[test]
 fn test_prelim() {
@@ -182,6 +291,20 @@ fn test_part1() {
     let mut computer = Computer::new(&get_input("input.txt"));
     let output = computer.run_program();
     assert_eq!(output, "3,6,3,7,0,7,0,3,0");
+}
+
+#[test]
+fn test_prelim2() {
+    let mut computer = Computer::new(&get_input("prelim2.txt"));
+    let start_a = computer.find_quine();
+    assert_eq!(start_a, 117440);
+}
+
+#[test]
+fn test_part2() {
+    let mut computer = Computer::new(&get_input("input.txt"));
+    let start_a = computer.find_quine();
+    assert_eq!(start_a, 136904920099226);
 }
 
 #[test]
@@ -206,4 +329,7 @@ fn main() {
     let mut computer = Computer::new(&get_input("input.txt"));
     let output = computer.run_program();
     println!("output: {}", output);
+    let mut computer = Computer::new(&get_input("input.txt"));
+    let start_a = computer.find_quine();
+    println!("start_a: {}", start_a);
 }
