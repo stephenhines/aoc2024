@@ -1,0 +1,13 @@
+Register A: 51064159
+Register B: 0
+Register C: 0
+
+Program: 
+2,4,  BST rA       rB = rA % 8
+1,5,  BXL 5        rB = rB ^ 5
+7,5,  CDV rB       rC = rA / 2 ^ rB
+1,6,  BXL 6        rB = rB ^ 6
+0,3,  ADV 3        rA = rA / 8
+4,6,  BXC          rB = rB ^ rC
+5,5,  OUT rB % 8   PRINT rB % 8
+3,0   JNZ 0        IF rA != 0 GOTO 0

@@ -204,8 +204,7 @@ fn main() {
     Grid::create_grid(WIDTH, HEIGHT, &get_input("input.txt"))
         .advance_time(100)
         .compute_safety();
-    let i = Grid::create_grid(WIDTH, HEIGHT, &get_input("input.txt")).find_tree();
-    println!("i: {}", i);
+    Grid::create_grid(WIDTH, HEIGHT, &get_input("input.txt")).find_tree();
     let mut grid = Grid::create_grid(WIDTH, HEIGHT, &get_input("input.txt"));
     grid.advance_time(6446);
     println!("{:?}", grid);
