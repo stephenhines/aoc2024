@@ -166,6 +166,24 @@ impl Circuit {
         }
     }
 
+    fn get_value_from_bit_vector(&self, prefix: &str) -> u64 {
+        let mut zvec = self
+            .wires
+            .keys()
+            .filter(|&n| n.starts_with(prefix))
+            .collect::<Vec<_>>();
+        zvec.sort();
+        zvec.reverse();
+        let mut result = 0;
+        for &name in zvec.iter() {
+            result <<= 1;
+            if self.wires.get(name).unwrap().state == WireState::True {
+                result += 1;
+            }
+        }
+        result
+    }
+
     fn simulate(&mut self) -> u64 {
         let mut names = Vec::new();
         for (name, _) in self.wires.iter() {
@@ -176,7 +194,7 @@ impl Circuit {
             self.resolve_wire(&name);
         }
 
-        let mut zvec = self
+        /*let mut zvec = self
             .wires
             .keys()
             .filter(|&n| n.starts_with('z'))
@@ -189,10 +207,17 @@ impl Circuit {
             if self.wires.get(name).unwrap().state == WireState::True {
                 result += 1;
             }
-        }
+        }*/
+        let result = self.get_value_from_bit_vector("z");
 
         //dbg!(&self);
         println!("Result: {result}");
+        let x = self.get_value_from_bit_vector("x");
+        let y = self.get_value_from_bit_vector("y");
+        println!("x: {x:46b}");
+        println!("y: {y:46b}");
+        println!("z: {result:46b}");
+        println!("c: {:46b}", x + y);
         result
     }
 }
