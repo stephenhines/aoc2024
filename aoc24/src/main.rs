@@ -107,16 +107,24 @@ impl Wire {
 #[derive(Debug)]
 struct Circuit {
     wires: HashMap<String, Wire>,
+    max_z: u32,
 }
 
 impl Circuit {
     fn new() -> Circuit {
         Circuit {
             wires: HashMap::new(),
+            max_z: 0,
         }
     }
 
     fn add_wire(&mut self, wire: &Wire) {
+        if wire.name.starts_with("z") {
+            let val = wire.name[1..].parse().unwrap();
+            if val > self.max_z {
+                self.max_z = val;
+            }
+        }
         self.wires.insert(wire.name.clone(), wire.clone());
     }
 
@@ -262,75 +270,195 @@ impl Circuit {
         result
     }
 
-    // Returns true if invalid found
-    fn invalid_xy_xor(&self, num: u32, wire: &String) -> bool {
+    // Returns true if this is x_num ^ y_num
+    fn is_xy_xor(&self, num: u32, wire: &String) -> bool {
         match &self.wires.get(wire).unwrap().gate {
             None => {
-                return true;
+                return false;
             }
             Some(vz_zz) => {
                 let gate = &vz_zz.gate_op;
                 if *gate != GateOp::Xor {
-                    return true;
+                    return false;
                 }
                 let x_zz = format!("x{:02}", num);
                 let y_zz = format!("y{:02}", num);
                 let lhs = &vz_zz.operand_1;
                 let rhs = &vz_zz.operand_2;
                 if (*lhs == x_zz && *rhs == y_zz) || (*lhs == y_zz && *rhs == x_zz) {
-                    return false;
+                    return true;
                 }
             }
         }
-        true
+        false
     }
 
-    // Returns true if invalid found
-    fn check_zzz_xor(&self, num: u32, invalid: &mut Vec<String>) -> bool {
-        let z_zz = format!("z{:02}", num);
-        if num == 0 {
-            // We can check this later, but it's different without a carry
-            let res = self.invalid_xy_xor(num, &z_zz);
-            if res {
-                invalid.push(z_zz);
-            }
-            return !res;
-        }
-        match &self.wires.get(&z_zz).unwrap().gate {
+    // Returns true if this is x_num && y_num
+    fn is_xy_and(&self, num: u32, wire: &String) -> bool {
+        match &self.wires.get(wire).unwrap().gate {
             None => {
-                invalid.push(z_zz);
-                return true;
-            },
+                return false;
+            }
             Some(vz_zz) => {
                 let gate = &vz_zz.gate_op;
-                if *gate != GateOp::Xor {
-                    invalid.push(z_zz);
-                    return true;
+                if *gate != GateOp::And {
+                    return false;
                 }
                 let x_zz = format!("x{:02}", num);
                 let y_zz = format!("y{:02}", num);
                 let lhs = &vz_zz.operand_1;
                 let rhs = &vz_zz.operand_2;
-                let invalid_xy_lhs = self.invalid_xy_xor(num, lhs);
-                let invalid_xy_rhs = self.invalid_xy_xor(num, rhs);
-                if invalid_xy_lhs && invalid_xy_rhs {
-                    invalid.push(rhs.clone());
+                if (*lhs == x_zz && *rhs == y_zz) || (*lhs == y_zz && *rhs == x_zz) {
                     return true;
                 }
-
-                /*if !(*lhs == x_zz && *rhs == y_zz) || (*lhs == y_zz && *rhs == x_zz) {
-                    invalid.push(z_zz);
-                }*/
-            },
+            }
         }
         false
     }
 
-    fn find_swaps(&self) {
-        //dbg!(&self);
+    // Returns true if this is x_num && y_num
+    fn is_non_xy_and(&self, _num: u32, wire: &String) -> bool {
+        if wire.starts_with('z') {
+            // IDK if this case actually happens.
+            println!("non-xy check looks at z wire: {wire}");
+            return false;
+        }
+        match &self.wires.get(wire).unwrap().gate {
+            None => {
+                return false;
+            }
+            Some(vz_zz) => {
+                let gate = &vz_zz.gate_op;
+                if *gate != GateOp::And {
+                    return false;
+                }
+                let lhs = &vz_zz.operand_1;
+                let rhs = &vz_zz.operand_2;
+                // We don't need to recurse; instead we just check that the operands aren't x/y.
+                if lhs.starts_with('x')
+                    || lhs.starts_with('y')
+                    || rhs.starts_with('x')
+                    || rhs.starts_with('y')
+                {
+                    return false;
+                }
+                return true;
+            }
+        }
+    }
+
+    // Returns false if carry chain isn't valid
+    fn is_valid_carry_chain(&self, num: u32, wire: &String, invalid: &mut Vec<String>) -> bool {
+        match &self.wires.get(wire).unwrap().gate {
+            None => {
+                invalid.push(wire.clone());
+                return false;
+            }
+            Some(vwire) => {
+                let gate = &vwire.gate_op;
+                if *gate != GateOp::Or {
+                    if num == 1 && *gate == GateOp::And {
+                        // TODO: We can do better here, but I'm bored. LOL
+                        return true;
+                    }
+                    invalid.push(wire.clone());
+                    return false;
+                }
+
+                let lhs = &vwire.operand_1;
+                let rhs = &vwire.operand_2;
+                let valid_xy_and_lhs = self.is_xy_and(num - 1, lhs);
+                let valid_xy_and_rhs = self.is_xy_and(num - 1, rhs);
+                let valid_non_xy_and_lhs = self.is_non_xy_and(num, lhs);
+                let valid_non_xy_and_rhs = self.is_non_xy_and(num, rhs);
+
+                if valid_xy_and_lhs && valid_non_xy_and_rhs
+                    || valid_xy_and_rhs && valid_non_xy_and_lhs
+                {
+                    return true;
+                }
+
+                if valid_xy_and_lhs {
+                    invalid.push(rhs.clone());
+                    return false;
+                }
+                if valid_xy_and_rhs {
+                    invalid.push(lhs.clone());
+                    return false;
+                }
+                if valid_non_xy_and_lhs {
+                    invalid.push(rhs.clone());
+                    return false;
+                }
+                if valid_non_xy_and_rhs {
+                    invalid.push(lhs.clone());
+                    return false;
+                }
+                // Invalid carry entirely
+                invalid.push(wire.clone());
+                false
+            }
+        }
+    }
+
+    // Returns false if invalid found
+    fn check_zzz_xor(&self, num: u32, invalid: &mut Vec<String>) -> bool {
+        let z_zz = format!("z{:02}", num);
+        if num == 0 {
+            let res = self.is_xy_xor(num, &z_zz);
+            if !res {
+                invalid.push(z_zz);
+            }
+            return res;
+        } else if num == self.max_z {
+            // Skip the last carry check
+            return true;
+        }
+        match &self.wires.get(&z_zz).unwrap().gate {
+            None => {
+                invalid.push(z_zz);
+                return false;
+            }
+            Some(vz_zz) => {
+                let gate = &vz_zz.gate_op;
+                if *gate != GateOp::Xor {
+                    invalid.push(z_zz);
+                    return false;
+                }
+                let lhs = &vz_zz.operand_1;
+                let rhs = &vz_zz.operand_2;
+                let valid_xy_lhs = self.is_xy_xor(num, lhs);
+                let valid_xy_rhs = self.is_xy_xor(num, rhs);
+
+                if valid_xy_lhs {
+                    return self.is_valid_carry_chain(num, rhs, invalid);
+                } else if valid_xy_rhs {
+                    return self.is_valid_carry_chain(num, lhs, invalid);
+                } else {
+                    assert!(!valid_xy_lhs && !valid_xy_rhs);
+                    let mut lhs_vec = Vec::new();
+                    let lhs_carry = self.is_valid_carry_chain(num, lhs, &mut lhs_vec);
+                    if lhs_carry {
+                        invalid.push(rhs.clone());
+                        return false;
+                    }
+                    let mut rhs_vec = Vec::new();
+                    let rhs_carry = self.is_valid_carry_chain(num, rhs, &mut rhs_vec);
+                    if rhs_carry {
+                        invalid.push(lhs.clone());
+                        return false;
+                    } else {
+                        // Both sides are invalid, so just push the whole node
+                        invalid.push(z_zz);
+                    }
+                    return false;
+                }
+            }
+        }
+    }
+
+    fn find_swaps(&self) -> String {
         let z = self.simulate_no_mut();
-        //let result = self.get_value_from_bit_vector("z");
-        //println!("Result: {result}");
         let x = self.get_value_from_bit_vector("x");
         let y = self.get_value_from_bit_vector("y");
         println!("x: {x:46b}");
@@ -338,15 +466,15 @@ impl Circuit {
         println!("z: {z:46b}");
         println!("c: {:46b}", x + y);
 
-
         let mut invalid: Vec<String> = Vec::new();
         for i in 0..46 {
-            if self.check_zzz_xor(i, &mut invalid) {
-                //let z_xx = format!("z{:02}", i);
-                //invalid.push(z_xx);
-            }
+            self.check_zzz_xor(i, &mut invalid);
         }
-        dbg!(invalid);
+        dbg!(&invalid);
+        invalid.sort();
+        let res = invalid.join(",");
+        println!("invalid: {}", res);
+        res
     }
 }
 
@@ -358,7 +486,6 @@ fn read_circuit(lines: &Vec<String>) -> Circuit {
             circuit.add_wire(&wire);
         }
     }
-    //dbg!(&circuit);
     circuit
 }
 
@@ -378,6 +505,12 @@ fn test_prelim2() {
 fn test_part1() {
     let result = read_circuit(&get_input("input.txt")).simulate();
     assert_eq!(result, 49574189473968);
+}
+
+#[test]
+fn test_part2() {
+    let res = read_circuit(&get_input("input.txt")).find_swaps();
+    assert_eq!(res, "ckb,kbs,ksv,nbd,tqq,z06,z20,z39");
 }
 
 fn main() {
