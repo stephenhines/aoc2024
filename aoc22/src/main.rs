@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
@@ -11,6 +12,122 @@ fn get_input(filename: &str) -> Vec<String> {
     }
 
     lines
+}
+
+const MAX_STEPS: usize = 2000 + 1;
+
+type Secrets = [u64; MAX_STEPS];
+type Price = [i64; MAX_STEPS];
+type Diff = [i64; MAX_STEPS];
+
+#[derive(Debug)]
+struct BananaMarket {
+    secrets: Vec<Secrets>,
+    prices: Vec<Price>,
+    diffs: Vec<Diff>,
+}
+
+impl BananaMarket {
+    fn new() -> Self {
+        BananaMarket {
+            secrets: Vec::new(),
+            prices: Vec::new(),
+            diffs: Vec::new(),
+        }
+    }
+
+    fn from_vec(start_secrets: &Vec<u64>) -> Self {
+        let mut market = BananaMarket::new();
+        for secret in start_secrets {
+            market.add_bidder(*secret);
+        }
+
+        market
+    }
+
+    fn add_bidder(&mut self, start_secret: u64) {
+        let mut secrets: Secrets = [0; MAX_STEPS];
+        let mut prices: Price = [0; MAX_STEPS];
+        let mut diffs: Diff = [0; MAX_STEPS];
+        let mut last_price = (start_secret % 10) as i64;
+        let mut secret = start_secret;
+        for i in 0..MAX_STEPS {
+            secrets[i] = secret;
+            prices[i] = (secret % 10) as i64;
+            diffs[i] = prices[i] - last_price;
+            last_price = prices[i];
+            secret = compute_secret(secret);
+        }
+        self.secrets.push(secrets);
+        self.prices.push(prices);
+        self.diffs.push(diffs);
+    }
+
+    // Enumerate all possible quads of value changes
+    fn find_diff_quads(&self) -> HashSet<(i64, i64, i64, i64)> {
+        let mut quads = HashSet::new();
+
+        for diff in &self.diffs {
+            for i in 0..MAX_STEPS - 3 {
+                let a = diff[i];
+                let b = diff[i + 1];
+                let c = diff[i + 2];
+                let d = diff[i + 3];
+                let quad = (a, b, c, d);
+                quads.insert(quad);
+            }
+        }
+
+        quads
+    }
+
+    // Find the first instance of the diff quad for a particular bidder and return their final price
+    fn evaluate_single_diff_quad(&self, num: usize, diff_quad: &(i64, i64, i64, i64)) -> i64 {
+        let diff = &self.diffs[num];
+        let prices = &self.prices[num];
+
+        for i in 0..MAX_STEPS - 3 {
+            if diff[i] == diff_quad.0
+                && diff[i + 1] == diff_quad.1
+                && diff[i + 2] == diff_quad.2
+                && diff[i + 3] == diff_quad.3
+            {
+                return prices[i + 3];
+            }
+        }
+
+        0
+    }
+
+    fn evaluate_diff_quad(&self, diff_quad: &(i64, i64, i64, i64)) -> i64 {
+        let mut total = 0;
+        let num_bidders = self.prices.len();
+
+        for i in 0..num_bidders {
+            total += self.evaluate_single_diff_quad(i, diff_quad);
+        }
+
+        total
+    }
+
+    fn find_best_total(&self) -> i64 {
+        let mut best = 0;
+
+        let quads = self.find_diff_quads();
+        let mut best_quad = (0, 0, 0, 0);
+        for quad in quads {
+            let val = self.evaluate_diff_quad(&quad);
+            if val > best {
+                best = val;
+                best_quad = quad.clone();
+            }
+        }
+
+        println!("Best price: {best}");
+        println!("Best quad: {:?}", best_quad);
+
+        best
+    }
 }
 
 fn read_secret_numbers(lines: &Vec<String>) -> Vec<u64> {
@@ -93,6 +210,13 @@ fn test_prelim() {
 }
 
 #[test]
+fn test_prelim2() {
+    let total =
+        BananaMarket::from_vec(&read_secret_numbers(&get_input("prelim2.txt"))).find_best_total();
+    assert_eq!(total, 23);
+}
+
+#[test]
 fn test_part1() {
     let sum = compute_secret_n_sum(&read_secret_numbers(&get_input("input.txt")), 2000);
     assert_eq!(sum, 19458130434);
@@ -101,4 +225,10 @@ fn test_part1() {
 fn main() {
     compute_secret_n_sum(&read_secret_numbers(&get_input("prelim.txt")), 2000);
     compute_secret_n_sum(&read_secret_numbers(&get_input("input.txt")), 2000);
+    let market = BananaMarket::from_vec(&read_secret_numbers(&get_input("prelim2.txt")));
+    market.find_best_total();
+    let market = BananaMarket::from_vec(&read_secret_numbers(&get_input("input.txt")));
+    //let quads = market.find_diff_quads();
+    //println!("quads: {}", quads.len());
+    market.find_best_total();
 }
