@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::BufRead;
@@ -20,11 +21,15 @@ type Secrets = [u64; MAX_STEPS];
 type Price = [i64; MAX_STEPS];
 type Diff = [i64; MAX_STEPS];
 
+type Quad = (i8, i8, i8, i8);
+type QuadMap = HashMap<Quad, i64>;
+
 #[derive(Debug)]
 struct BananaMarket {
     secrets: Vec<Secrets>,
     prices: Vec<Price>,
     diffs: Vec<Diff>,
+    quad_map: QuadMap,
 }
 
 impl BananaMarket {
@@ -33,6 +38,7 @@ impl BananaMarket {
             secrets: Vec::new(),
             prices: Vec::new(),
             diffs: Vec::new(),
+            quad_map: HashMap::new(),
         }
     }
 
@@ -51,11 +57,34 @@ impl BananaMarket {
         let mut diffs: Diff = [0; MAX_STEPS];
         let mut last_price = (start_secret % 10) as i64;
         let mut secret = start_secret;
+
+        let mut seen_set = HashSet::new();
+
         for i in 0..MAX_STEPS {
             secrets[i] = secret;
             prices[i] = (secret % 10) as i64;
             diffs[i] = prices[i] - last_price;
             last_price = prices[i];
+
+            // We use i > 3, because technically the first price doesn't
+            // really have a difference to it.
+            if i > 3 {
+                let quad = (
+                    diffs[i - 3] as i8,
+                    diffs[i - 2] as i8,
+                    diffs[i - 1] as i8,
+                    diffs[i] as i8,
+                );
+                if !seen_set.contains(&quad) {
+                    if let std::collections::hash_map::Entry::Vacant(e) = self.quad_map.entry(quad)
+                    {
+                        e.insert(prices[i]);
+                    } else {
+                        *self.quad_map.get_mut(&quad).unwrap() += prices[i];
+                    }
+                    seen_set.insert(quad);
+                }
+            }
             secret = compute_secret(secret);
         }
         self.secrets.push(secrets);
@@ -110,7 +139,23 @@ impl BananaMarket {
         total
     }
 
-    fn find_best_total(&self) -> i64 {
+    fn find_best_total_lookup(&self) -> i64 {
+        let mut best_quad = (0, 0, 0, 0);
+        let mut best = 0;
+        for (&k, &v) in self.quad_map.iter() {
+            if v > best {
+                best = v;
+                best_quad = k;
+            }
+        }
+
+        println!("Best price: {best}");
+        println!("Best quad: {:?}", best_quad);
+
+        best
+    }
+
+    fn find_best_total_brute_force(&self) -> i64 {
         let mut best = 0;
 
         let quads = self.find_diff_quads();
@@ -119,7 +164,7 @@ impl BananaMarket {
             let val = self.evaluate_diff_quad(&quad);
             if val > best {
                 best = val;
-                best_quad = quad.clone();
+                best_quad = quad;
             }
         }
 
@@ -211,8 +256,11 @@ fn test_prelim() {
 
 #[test]
 fn test_prelim2() {
-    let total =
-        BananaMarket::from_vec(&read_secret_numbers(&get_input("prelim2.txt"))).find_best_total();
+    let total = BananaMarket::from_vec(&read_secret_numbers(&get_input("prelim2.txt")))
+        .find_best_total_brute_force();
+    assert_eq!(total, 23);
+    let total = BananaMarket::from_vec(&read_secret_numbers(&get_input("prelim2.txt")))
+        .find_best_total_lookup();
     assert_eq!(total, 23);
 }
 
@@ -222,13 +270,20 @@ fn test_part1() {
     assert_eq!(sum, 19458130434);
 }
 
+#[test]
+fn test_part2() {
+    let total = BananaMarket::from_vec(&read_secret_numbers(&get_input("input.txt")))
+        .find_best_total_lookup();
+    assert_eq!(total, 2130);
+}
+
 fn main() {
     compute_secret_n_sum(&read_secret_numbers(&get_input("prelim.txt")), 2000);
     compute_secret_n_sum(&read_secret_numbers(&get_input("input.txt")), 2000);
     let market = BananaMarket::from_vec(&read_secret_numbers(&get_input("prelim2.txt")));
-    market.find_best_total();
+    market.find_best_total_brute_force();
+    market.find_best_total_lookup();
     let market = BananaMarket::from_vec(&read_secret_numbers(&get_input("input.txt")));
-    //let quads = market.find_diff_quads();
-    //println!("quads: {}", quads.len());
-    market.find_best_total();
+    market.find_best_total_lookup();
+    //market.find_best_total_brute_force();
 }
