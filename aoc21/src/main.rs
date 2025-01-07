@@ -76,14 +76,6 @@ const MOVES_0A_NUM: [[usize; 11]; 11] = [
     [  1, 3, 2, 1, 4, 3, 2, 5, 4, 3, 0 ], // A
 ];
 
-/*
-       +---+---+
-       | ^ | A |
-   +---+---+---+
-   | < | v | > |
-   +---+---+---+
-*/
-
 struct NumPadRobot {
     loc: usize,
 }
@@ -129,53 +121,104 @@ impl DirPadRobot {
     }
 
     fn go_to_char(&mut self, to_char: char) -> &str {
-        let to = match to_char {
+        self.go_to(Self::get_index(to_char))
+    }
+
+    fn get_index(c: char) -> usize {
+        match c {
             '^' => 0,
             '<' => 1,
             'v' => 2,
             '>' => 3,
             'A' => 4,
             _ => {
-                panic!("Invalid entry: {to_char}");
+                panic!("Invalid entry: {c}");
             }
-        };
+        }
+    }
+}
 
-        self.go_to(to)
+type Memo = [[[usize; 5]; 5]; 25];
+
+struct DirPadHelper {}
+
+impl DirPadHelper {
+    fn get_moves(from: char, to: char, stage: usize, memo: &mut Memo) -> usize {
+        let from = DirPadRobot::get_index(from);
+        let to = DirPadRobot::get_index(to);
+        let lookup = memo[stage][from][to];
+        if lookup != 0 {
+            // We've already computed this
+            return lookup;
+        }
+
+        let moves = MOVES_LUDRA[from][to];
+        if stage == 0 {
+            return moves.len();
+        }
+
+        let mut num_moves = 0;
+        let mut prev = 'A';
+        for c in moves.chars() {
+            num_moves += Self::get_moves(prev, c, stage - 1, memo);
+            prev = c;
+        }
+
+        memo[stage][from][to] = num_moves;
+
+        num_moves
     }
 }
 
 fn calculate_moves(line: &str) -> String {
-    let mut numpad = NumPadRobot::new();
-    let mut output = String::new();
+    let mut num_pad_robot = NumPadRobot::new();
+    let mut num_pad_robot_moves = String::new();
     for c in line.chars() {
-        output.push_str(numpad.go_to_char(c));
+        num_pad_robot_moves.push_str(num_pad_robot.go_to_char(c));
     }
-    println!("Code: {line} part 1 moves: {output}");
+    //println!("Code: {line} part 1 moves: {num_pad_robot_moves}");
 
-    let mut dirpad = DirPadRobot::new();
-    let mut out2 = String::new();
-    for c in output.chars() {
-        out2.push_str(dirpad.go_to_char(c));
+    let mut first_dir_pad_robot = DirPadRobot::new();
+    let mut first_dir_pad_robot_moves = String::new();
+    for c in num_pad_robot_moves.chars() {
+        first_dir_pad_robot_moves.push_str(first_dir_pad_robot.go_to_char(c));
     }
-    println!("Code: {line} part 2 moves: {out2}");
+    //println!("Code: {line} part 2 moves: {first_dir_pad_robot_moves}");
 
-    let mut dirpad2 = DirPadRobot::new();
-    let mut out3 = String::new();
-    for c in out2.chars() {
-        out3.push_str(dirpad2.go_to_char(c));
+    let mut second_dir_pad_robot = DirPadRobot::new();
+    let mut second_dir_pad_robot_moves = String::new();
+    for c in first_dir_pad_robot_moves.chars() {
+        second_dir_pad_robot_moves.push_str(second_dir_pad_robot.go_to_char(c));
     }
-    println!("Code: {line} part 3 moves {}: {out3}", out3.len());
+    //println!("Code: {line} part 3 moves {}: {second_dir_pad_robot_moves}", second_dir_pad_robot_moves.len());
 
-    out3
+    second_dir_pad_robot_moves
 }
 
-#[allow(dead_code)]
-fn calculate_moves_all(lines: &Vec<String>) -> Vec<String> {
-    let mut output_codes = Vec::new();
-    for line in lines {
-        output_codes.push(calculate_moves(line));
+fn calculate_moves_part2(line: &str, stages: usize) -> usize {
+    assert!(stages > 0 && stages <= 25);
+
+    // We subtract one, as there has to be at least one dir_pad
+    let actual_stages = stages - 1;
+
+    let mut num_pad_robot = NumPadRobot::new();
+    let mut num_pad_robot_moves = String::new();
+    let mut memo = [[[0; 5]; 5]; 25];
+
+    for c in line.chars() {
+        num_pad_robot_moves.push_str(num_pad_robot.go_to_char(c));
     }
-    output_codes
+    //println!("Code: {line} part 1 moves: {num_pad_robot_moves}");
+
+    let mut dir_pad_helper_moves = 0;
+    let mut prev = 'A';
+    for c in num_pad_robot_moves.chars() {
+        dir_pad_helper_moves += DirPadHelper::get_moves(prev, c, actual_stages, &mut memo);
+        prev = c;
+    }
+
+    //println!("Code: {line} num_moves: {dir_pad_helper_moves}");
+    dir_pad_helper_moves
 }
 
 fn calculate_complexity(lines: &Vec<String>) -> usize {
@@ -190,6 +233,20 @@ fn calculate_complexity(lines: &Vec<String>) -> usize {
     }
 
     println!("Total complexity: {total_complexity}");
+    total_complexity
+}
+
+fn calculate_part2_complexity(lines: &Vec<String>, stages: usize) -> usize {
+    let mut total_complexity = 0;
+    for line in lines {
+        let toks = line.split('A').collect::<Vec<_>>();
+        let numeric = toks[0].to_string().parse::<usize>().unwrap();
+        let num_moves = calculate_moves_part2(line, stages);
+        let complexity = numeric * num_moves;
+        total_complexity += complexity;
+    }
+
+    println!("Total part2 complexity: {total_complexity}");
     total_complexity
 }
 
@@ -231,8 +288,16 @@ fn test_part1() {
     let complexity = calculate_complexity(&get_input("input.txt"));
     assert_eq!(complexity, 248684);
 }
+#[test]
+fn test_part2() {
+    let complexity = calculate_part2_complexity(&get_input("input.txt"), 25);
+    assert_eq!(complexity, 307055584161760);
+}
 
 fn main() {
     calculate_complexity(&get_input("prelim.txt"));
     calculate_complexity(&get_input("input.txt"));
+    calculate_part2_complexity(&get_input("prelim.txt"), 2);
+    calculate_part2_complexity(&get_input("input.txt"), 2);
+    calculate_part2_complexity(&get_input("input.txt"), 25);
 }
