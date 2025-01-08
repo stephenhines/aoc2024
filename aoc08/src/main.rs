@@ -24,20 +24,44 @@ struct Graph {
 }
 
 impl Graph {
-    fn find_antinodes(&mut self) -> usize {
+    fn inbounds(&self, coord: Coord) -> bool {
+        coord.0 >= 0
+            && coord.0 < self.width as isize
+            && coord.1 >= 0
+            && coord.1 < self.height as isize
+    }
+
+    fn compute_antinodes(&self, left: Coord, right: Coord, harmonics: bool) -> Vec<Coord> {
+        let mut nodes = Vec::new();
+        let mut coord = left;
+        let diff = (left.0 - right.0, left.1 - right.1);
+        if harmonics {
+            while self.inbounds(coord) {
+                nodes.push(coord);
+                coord = (coord.0 + diff.0, coord.1 + diff.1);
+            }
+        } else {
+            coord = (coord.0 + diff.0, coord.1 + diff.1);
+            if self.inbounds(coord) {
+                nodes.push(coord);
+            }
+        }
+
+        nodes
+    }
+
+    fn find_antinodes(&mut self, harmonics: bool) -> usize {
         let mut antinodes = HashSet::new();
         for locs in self.antennas.values() {
             for (idx, &left) in locs.iter().enumerate() {
                 for &right in locs.iter().skip(idx + 1) {
-                    let nodes = compute_antinodes(left, right);
+                    let nodes = self.compute_antinodes(left, right, harmonics);
                     for node in nodes {
-                        if node.0 >= 0
-                            && node.0 < self.width as isize
-                            && node.1 >= 0
-                            && node.1 < self.height as isize
-                        {
-                            antinodes.insert(node);
-                        }
+                        antinodes.insert(node);
+                    }
+                    let nodes = self.compute_antinodes(right, left, harmonics);
+                    for node in nodes {
+                        antinodes.insert(node);
                     }
                 }
             }
@@ -62,63 +86,6 @@ impl Graph {
             println!();
         }
     }
-}
-
-// None of these are bounds-checked. We do that in the caller.
-fn compute_antinodes(left: Coord, right: Coord) -> Vec<Coord> {
-    let mut nodes = Vec::new();
-    let x_diff = (left.0 - right.0).abs();
-    let y_diff = (left.1 - right.1).abs();
-    if left.0 < right.0 {
-        if left.1 < right.1 {
-            // L.
-            // .R
-            let x = left.0 - x_diff;
-            let y = left.1 - y_diff;
-            nodes.push((x, y));
-
-            let x = right.0 + x_diff;
-            let y = right.1 + y_diff;
-            nodes.push((x, y));
-        } else {
-            // left.1 >= right.1
-            // .R
-            // L.
-            let x = left.0 - x_diff;
-            let y = left.1 + y_diff;
-            nodes.push((x, y));
-
-            let x = right.0 + x_diff;
-            let y = right.1 - y_diff;
-            nodes.push((x, y));
-        }
-    } else {
-        // left.0 >= right.0
-        if left.1 < right.1 {
-            // .L
-            // R.
-            let x = right.0 - x_diff;
-            let y = right.1 + y_diff;
-            nodes.push((x, y));
-
-            let x = left.0 + x_diff;
-            let y = left.1 - y_diff;
-            nodes.push((x, y));
-        } else {
-            // left.1 >= right.1
-            // R.
-            // .L
-            let x = right.0 - x_diff;
-            let y = right.1 - y_diff;
-            nodes.push((x, y));
-
-            let x = left.0 + x_diff;
-            let y = left.1 + y_diff;
-            nodes.push((x, y));
-        }
-    }
-
-    nodes
 }
 
 fn read_graph(lines: &[String]) -> Graph {
@@ -149,17 +116,31 @@ fn read_graph(lines: &[String]) -> Graph {
 
 #[test]
 fn test_prelim() {
-    let antinodes = read_graph(&get_input("prelim.txt")).find_antinodes();
+    let antinodes = read_graph(&get_input("prelim.txt")).find_antinodes(false);
     assert_eq!(antinodes, 14);
 }
 
 #[test]
 fn test_part1() {
-    let antinodes = read_graph(&get_input("input.txt")).find_antinodes();
+    let antinodes = read_graph(&get_input("input.txt")).find_antinodes(false);
     assert_eq!(antinodes, 344);
 }
 
+#[test]
+fn test_prelim2() {
+    let antinodes = read_graph(&get_input("prelim.txt")).find_antinodes(true);
+    assert_eq!(antinodes, 34);
+}
+
+#[test]
+fn test_part2() {
+    let antinodes = read_graph(&get_input("input.txt")).find_antinodes(true);
+    assert_eq!(antinodes, 1182);
+}
+
 fn main() {
-    read_graph(&get_input("prelim.txt")).find_antinodes();
-    read_graph(&get_input("input.txt")).find_antinodes();
+    read_graph(&get_input("prelim.txt")).find_antinodes(false);
+    read_graph(&get_input("input.txt")).find_antinodes(false);
+    read_graph(&get_input("prelim.txt")).find_antinodes(true);
+    read_graph(&get_input("input.txt")).find_antinodes(true);
 }
