@@ -22,23 +22,15 @@ fn read_network_map(lines: &Vec<String>) -> HashMap<String, Vec<String>> {
         assert_eq!(toks.len(), 2);
         let computer1 = toks[0].to_string();
         let computer2 = toks[1].to_string();
-        if map.contains_key(&computer1) {
-            let mut entry = map.get(&computer1).unwrap().clone();
-            entry.push(computer2.clone());
-            map.insert(computer1.clone(), entry);
+        if let std::collections::hash_map::Entry::Vacant(e) = map.entry(computer1.clone()) {
+            e.insert(vec![computer2.clone()]);
         } else {
-            let mut entry = Vec::new();
-            entry.push(computer2.clone());
-            map.insert(computer1.clone(), entry);
+            map.get_mut(&computer1).unwrap().push(computer2.clone());
         }
-        if map.contains_key(&computer2) {
-            let mut entry = map.get(&computer2).unwrap().clone();
-            entry.push(computer1.clone());
-            map.insert(computer2.clone(), entry);
+        if let std::collections::hash_map::Entry::Vacant(e) = map.entry(computer2.clone()) {
+            e.insert(vec![computer1.clone()]);
         } else {
-            let mut entry = Vec::new();
-            entry.push(computer1.clone());
-            map.insert(computer2.clone(), entry);
+            map.get_mut(&computer2).unwrap().push(computer1.clone());
         }
     }
     //dbg!(&map);
@@ -57,7 +49,7 @@ fn find_trios(map: &HashMap<String, Vec<String>>) -> usize {
                 for label_3 in second_values {
                     let third_values = map.get(label_3).unwrap();
                     if third_values.contains(label_1) {
-                        let mut val_vec = vec![label_1, label_2, label_3];
+                        let mut val_vec = [label_1, label_2, label_3];
                         val_vec.sort();
                         set.insert((val_vec[0], val_vec[1], val_vec[2]));
                         //println!("Found trio: {label_1} {label_2} {label_3}");
@@ -100,10 +92,8 @@ fn check_clique(map: &HashMap<String, Vec<String>>, clique: &Vec<String>) -> boo
     for m in clique {
         let connections = map.get(m).unwrap();
         for n in clique {
-            if m != n {
-                if !connections.contains(n) {
-                    return false;
-                }
+            if m != n && !connections.contains(n) {
+                return false;
             }
         }
     }
@@ -119,12 +109,10 @@ fn find_cliques(map: &HashMap<String, Vec<String>>) -> String {
         let try_vec = get_combos(map, key);
         for clique in try_vec {
             if !tried.contains(&clique) {
-                if clique.len() > max_clique_len {
-                    if check_clique(map, &clique) {
-                        max_clique = clique.clone();
-                        max_clique_len = max_clique.len();
-                        //dbg!(&clique);
-                    }
+                if clique.len() > max_clique_len && check_clique(map, &clique) {
+                    max_clique = clique.clone();
+                    max_clique_len = max_clique.len();
+                    //dbg!(&clique);
                 }
                 tried.insert(clique);
             }
