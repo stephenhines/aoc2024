@@ -76,7 +76,7 @@ impl TopoMap {
         self.grid[loc.1][loc.0]
     }
 
-    fn find_paths(&self, loc: Coord, prev_height: i8) -> usize {
+    fn find_unique_paths(&self, loc: Coord, prev_height: i8) -> usize {
         let (x, y) = loc;
 
         let height = self.get_height(loc);
@@ -93,27 +93,36 @@ impl TopoMap {
         }
 
         let mut score = 0;
-        score += self.find_paths((x - 1, y), height); // Left
-        score += self.find_paths((x + 1, y), height); // Right
-        score += self.find_paths((x, y - 1), height); // Up
-        score += self.find_paths((x, y + 1), height); // Down
+        score += self.find_unique_paths((x - 1, y), height); // Left
+        score += self.find_unique_paths((x + 1, y), height); // Right
+        score += self.find_unique_paths((x, y - 1), height); // Up
+        score += self.find_unique_paths((x, y + 1), height); // Down
 
         //println!("intermediate {:?} - score {score}", loc);
         score
     }
 
-    #[allow(dead_code)]
-    fn get_trailhead_paths(&self, loc: Coord) -> usize {
+    fn get_trailhead_rating(&self, loc: Coord) -> usize {
         if self.get_height(loc) == 0 {
-            let score = self.find_paths(loc, -1);
-            println!("good_trailhead {:?} - {score}", loc);
-            score
+            self.find_unique_paths(loc, -1)
         } else {
             0
         }
     }
 
-    fn find_unique_trails(&self, loc: Coord, prev_height: i8) -> HashSet<Coord> {
+    fn total_rating(&self) -> usize {
+        let mut score = 0;
+        for y in 1..self.height + 1 {
+            for x in 1..self.width + 1 {
+                score += self.get_trailhead_rating((x, y));
+            }
+        }
+
+        println!("Total rating: {score}");
+        score
+    }
+
+    fn find_unique_plateaus(&self, loc: Coord, prev_height: i8) -> HashSet<Coord> {
         let (x, y) = loc;
 
         let height = self.get_height(loc);
@@ -125,23 +134,22 @@ impl TopoMap {
 
         if height == 9 {
             // We've reached a plateau
-            //println!("Found plateau {:?}", loc);
             let mut set = HashSet::new();
             set.insert(loc);
             return set;
         }
 
-        let mut set = self.find_unique_trails((x - 1, y), height); // Left
-        set.extend(self.find_unique_trails((x + 1, y), height)); // Right
-        set.extend(self.find_unique_trails((x, y - 1), height)); // Up
-        set.extend(self.find_unique_trails((x, y + 1), height)); // Down
+        let mut set = self.find_unique_plateaus((x - 1, y), height); // Left
+        set.extend(self.find_unique_plateaus((x + 1, y), height)); // Right
+        set.extend(self.find_unique_plateaus((x, y - 1), height)); // Up
+        set.extend(self.find_unique_plateaus((x, y + 1), height)); // Down
 
         set
     }
 
     fn get_trailhead_score(&self, loc: Coord) -> usize {
         if self.get_height(loc) == 0 {
-            let set = self.find_unique_trails(loc, -1);
+            let set = self.find_unique_plateaus(loc, -1);
             set.len()
         } else {
             0
@@ -173,9 +181,23 @@ fn test_part1() {
     assert_eq!(total_score, 501);
 }
 
+#[test]
+fn test_prelim2() {
+    let total_rating = TopoMap::new(&get_input("prelim.txt")).total_rating();
+    assert_eq!(total_rating, 81);
+}
+
+#[test]
+fn test_part2() {
+    let total_rating = TopoMap::new(&get_input("input.txt")).total_rating();
+    assert_eq!(total_rating, 1017);
+}
+
 fn main() {
     let topomap = TopoMap::new(&get_input("prelim.txt"));
     topomap.total_score();
+    topomap.total_rating();
     let topomap = TopoMap::new(&get_input("input.txt"));
     topomap.total_score();
+    topomap.total_rating();
 }
