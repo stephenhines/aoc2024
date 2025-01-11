@@ -18,6 +18,9 @@ fn get_input(filename: &str) -> Vec<String> {
 const MAX_DIM: usize = 150;
 type Grid = [[char; MAX_DIM]; MAX_DIM];
 
+// Use an invalid char as a border to simplify bounds checking of indices
+const INVALID: char = ' ';
+
 type Coord = (usize, usize);
 
 #[derive(Debug)]
@@ -29,15 +32,13 @@ struct Garden {
 
 impl Garden {
     fn new(lines: &[String]) -> Self {
-        let mut grid = [[' '; MAX_DIM]; MAX_DIM];
+        let mut grid = [[INVALID; MAX_DIM]; MAX_DIM];
         let height = lines.len();
         let width = lines[0].len();
 
         for y in 0..height {
             let line = lines[y].chars().collect::<Vec<_>>();
-            for x in 0..width {
-                grid[y + 1][x + 1] = line[x];
-            }
+            grid[y + 1][1..width + 1].copy_from_slice(&line);
         }
         Self {
             grid,
@@ -114,8 +115,69 @@ impl Garden {
         perimeter
     }
 
-    fn fence_price(&self) -> usize {
-        let mut price = 0;
+    fn get_sides(&self, region: &HashSet<Coord>) -> usize {
+        // This comes down to looking for corners, which are equal to the number of sides
+        let mut sides = 0;
+        let (x, y) = region.iter().collect::<Vec<_>>().first().unwrap();
+        let search = self.grid[*y][*x];
+
+        for &pos in region {
+            let (x, y) = pos;
+
+            // Corners can be detected with the following kinds of patterns. For a plot with
+            // plant type O, we look for differing X plants in cardinal directions.
+            //
+            // .X.  .X.  ...  ...
+            // XO.  .OX  XO.  .OX
+            // ...  ...  .X.  .X.
+            let diff_up_left = self.grid[y - 1][x - 1] != search;
+            let diff_up = self.grid[y - 1][x] != search;
+            let diff_up_right = self.grid[y - 1][x + 1] != search;
+            let diff_left = self.grid[y][x - 1] != search;
+            let diff_right = self.grid[y][x + 1] != search;
+            let diff_down_left = self.grid[y + 1][x - 1] != search;
+            let diff_down = self.grid[y + 1][x] != search;
+            let diff_down_right = self.grid[y + 1][x + 1] != search;
+
+            if diff_up && diff_left {
+                sides += 1; // Upper left corner
+            }
+            if diff_up && diff_right {
+                sides += 1; // Upper right corner
+            }
+            if diff_down && diff_left {
+                sides += 1; // Lower left corner
+            }
+            if diff_down && diff_right {
+                sides += 1; // Lower right corner
+            }
+
+            // Check if we have the other kind of inner corner where only one diagonal neighbor is
+            // different. Examples below show how this works when starting with the center O.
+            //
+            // XO.  .OX  ...  ...
+            // OO.  .OO  OO.  .OO
+            // ...  ...  XO.  .OX
+            if !diff_up && !diff_left && diff_up_left {
+                sides += 1; // Upper left inner corner
+            }
+            if !diff_up && !diff_right && diff_up_right {
+                sides += 1; // Upper right inner corner
+            }
+            if !diff_down && !diff_left && diff_down_left {
+                sides += 1; // Lower left inner corner
+            }
+            if !diff_down && !diff_right && diff_down_right {
+                sides += 1; // Lower right inner corner
+            }
+        }
+
+        //println!("{search}: {sides} sides");
+        sides
+    }
+
+    fn get_regions(&self) -> Vec<HashSet<Coord>> {
+        let mut regions = Vec::new();
 
         // Keep track of the plots we have visited
         let mut counted: HashSet<Coord> = HashSet::new();
@@ -127,14 +189,32 @@ impl Garden {
                 }
                 let region = self.get_region(pos);
                 counted.extend(&region);
-
-                //println!("Region: {} {}", self.grid[y][x], region.len());
-                price += self.get_area(&region) * self.get_perimeter(&region);
+                regions.push(region);
             }
         }
+        regions
+    }
 
-        //self.print_grid();
+    fn fence_price(&self) -> usize {
+        let mut price = 0;
+
+        let regions = self.get_regions();
+        for region in regions {
+            price += self.get_area(&region) * self.get_perimeter(&region);
+        }
+
         println!("Price: {price}");
+        price
+    }
+
+    fn fence_price_sides(&self) -> usize {
+        let mut price = 0;
+
+        let regions = self.get_regions();
+        for region in regions {
+            price += self.get_area(&region) * self.get_sides(&region);
+        }
+        println!("Price (sides): {price}");
         price
     }
 }
@@ -157,7 +237,28 @@ fn test_part1() {
     assert_eq!(price, 1363484);
 }
 
+#[test]
+fn test_prelim2() {
+    let price = Garden::new(&get_input("prelim.txt")).fence_price_sides();
+    assert_eq!(price, 80);
+
+    let price = Garden::new(&get_input("prelim_holes.txt")).fence_price_sides();
+    assert_eq!(price, 436);
+
+    let price = Garden::new(&get_input("prelim_e.txt")).fence_price_sides();
+    assert_eq!(price, 236);
+}
+
+#[test]
+fn test_part2() {
+    let price = Garden::new(&get_input("input.txt")).fence_price_sides();
+    assert_eq!(price, 838988);
+}
+
 fn main() {
     Garden::new(&get_input("prelim.txt")).fence_price();
     Garden::new(&get_input("input.txt")).fence_price();
+    Garden::new(&get_input("prelim.txt")).fence_price_sides();
+    Garden::new(&get_input("prelim_holes.txt")).fence_price_sides();
+    Garden::new(&get_input("input.txt")).fence_price_sides();
 }
