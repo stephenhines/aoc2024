@@ -13,10 +13,10 @@ fn get_input(filename: &str) -> Vec<String> {
     lines
 }
 
-type Coord = (usize, usize);
+type Coord = (isize, isize);
 
-const BUTTON_A_COST: usize = 3;
-const BUTTON_B_COST: usize = 1;
+const BUTTON_A_COST: isize = 3;
+const BUTTON_B_COST: isize = 1;
 
 #[derive(Debug)]
 struct Claw {
@@ -34,58 +34,74 @@ impl Claw {
         }
     }
 
-    // Find the lowest cost in A/B button presses
-    fn get_cost(&self) -> usize {
-        let mut lowest_cost = usize::MAX;
+    /*
+        Find the lowest cost in A/B button presses
+        Solve the pair of equations instead of brute forcing.
 
-        // B is cheaper to press than A, so we'll start out with lower A
-        // We cap at 100 presses.
-        for a in 0..=100 {
-            let ax = a * self.button_a.0;
-            let ay = a * self.button_a.1;
-            if ax > self.prize.0 || ay > self.prize.1 {
-                // We're done when A presses have exceeded either bound
-                break;
-            }
-            // We don't have to brute force anything at all, because we can just do % and / to compute things
-            let target_x = self.prize.0 - ax;
-            let target_y = self.prize.1 - ay;
-            if target_x % self.button_b.0 == 0 {
-                let b = target_x / self.button_b.0;
-                let by = b * self.button_b.1;
-                if by == target_y {
-                    let cost = a * BUTTON_A_COST + b * BUTTON_B_COST;
-                    if cost < lowest_cost {
-                        lowest_cost = cost;
-                        if b > 100 {
-                            panic!("Unexpected B presses {b}");
-                        }
-                    }
-                }
-            }
+        a * ax + b * bx = px                            (1)
+        a * ay + b * by = py                            (2)
+
+        Hooray for first principles!
+
+            # start with (1)
+        a * ax + b * bx = px                            (1)
+            # subtract b * bx
+        a * ax = px - b * bx
+            # divide by ax
+        a = (px - b * bx) / ax                          (3)
+
+            # substitute (3) into (2)
+        (px - b * bx) / ax * ay + b * by = py
+            # multiply by ax
+        (px - b * bx) * ay + b * by * ax = py * ax
+            # expand
+        px * ay - b * bx * ay + b * by * ax = py * ax
+            # subtract px * ay
+        - b * bx * ay + b * by * ax = py * ax - px * ay
+            # factor out b on the lhs
+        b * (by * ax - bx * ay) = py * ax - px * ay
+            # divide by lhs (other than b term)
+        b = (py * ax - px * ay) / (by * ax - bx * ay)   (4)
+
+        # This gives us the following two final equations, which we can use.
+        # We need to later check that we got positive, integral solutions,
+        # which is easy to verify by plugging everything back into the first
+        # equations and checking versus the prize coordinates.
+
+        b = (py * ax - px * ay) / (by * ax - bx * ay)   (4)
+        a = (px - b * bx) / ax                          (3)
+    */
+    fn get_cost(&self) -> isize {
+        let (ax, ay) = self.button_a;
+        let (bx, by) = self.button_b;
+        let (px, py) = self.prize;
+
+        let b = (py * ax - px * ay) / (by * ax - bx * ay);
+        let a = (px - b * bx) / ax;
+
+        // Probably redundant since there are no negative values
+        if a < 0 || b < 0 {
+            return 0;
         }
 
-        if lowest_cost == usize::MAX {
-            lowest_cost = 0;
+        // Check to ensure it works
+        let total = (a * ax + b * bx, a * ay + b * by);
+        //println!("prize: {:?} - a: {a} b: {b}", self.prize);
+        if total == self.prize {
+            a * BUTTON_A_COST + b * BUTTON_B_COST
+        } else {
+            0
         }
-
-        //println!("claw cost {lowest_a} {lowest_b}: {lowest_cost}");
-        lowest_cost
     }
 }
 
-fn get_total_cost(claws: &[Claw]) -> usize {
-    let mut cost = 0;
-
-    for claw in claws {
-        cost += claw.get_cost();
-    }
-
+fn get_total_cost(claws: &[Claw]) -> isize {
+    let cost = claws.iter().map(|c| c.get_cost()).sum();
     println!("Total cost: {cost}");
     cost
 }
 
-fn read_claws(lines: &[String]) -> Vec<Claw> {
+fn read_claws(lines: &[String], fixed: bool) -> Vec<Claw> {
     let mut claws = Vec::new();
 
     let mut button_a = (0, 0);
@@ -96,32 +112,36 @@ fn read_claws(lines: &[String]) -> Vec<Claw> {
             "Button A" => {
                 let ctoks = toks[1].split(", ").collect::<Vec<_>>();
                 let x = ctoks[0].split('+').collect::<Vec<_>>()[1]
-                    .parse::<usize>()
+                    .parse::<isize>()
                     .unwrap();
                 let y = ctoks[1].split('+').collect::<Vec<_>>()[1]
-                    .parse::<usize>()
+                    .parse::<isize>()
                     .unwrap();
                 button_a = (x, y);
             }
             "Button B" => {
                 let ctoks = toks[1].split(", ").collect::<Vec<_>>();
                 let x = ctoks[0].split('+').collect::<Vec<_>>()[1]
-                    .parse::<usize>()
+                    .parse::<isize>()
                     .unwrap();
                 let y = ctoks[1].split('+').collect::<Vec<_>>()[1]
-                    .parse::<usize>()
+                    .parse::<isize>()
                     .unwrap();
                 button_b = (x, y);
             }
             "Prize" => {
                 let ctoks = toks[1].split(", ").collect::<Vec<_>>();
                 let x = ctoks[0].split('=').collect::<Vec<_>>()[1]
-                    .parse::<usize>()
+                    .parse::<isize>()
                     .unwrap();
                 let y = ctoks[1].split('=').collect::<Vec<_>>()[1]
-                    .parse::<usize>()
+                    .parse::<isize>()
                     .unwrap();
-                let prize = (x, y);
+                let mut prize = (x, y);
+                if fixed {
+                    prize.0 += 10000000000000;
+                    prize.1 += 10000000000000;
+                }
                 let claw = Claw::new(button_a, button_b, prize);
                 claws.push(claw);
             }
@@ -137,17 +157,25 @@ fn read_claws(lines: &[String]) -> Vec<Claw> {
 
 #[test]
 fn test_prelim() {
-    let cost = get_total_cost(&read_claws(&get_input("prelim.txt")));
+    let cost = get_total_cost(&read_claws(&get_input("prelim.txt"), false));
     assert_eq!(cost, 480);
 }
 
 #[test]
 fn test_part1() {
-    let cost = get_total_cost(&read_claws(&get_input("input.txt")));
+    let cost = get_total_cost(&read_claws(&get_input("input.txt"), false));
     assert_eq!(cost, 39748);
 }
 
+#[test]
+fn test_part2() {
+    let cost = get_total_cost(&read_claws(&get_input("input.txt"), true));
+    assert_eq!(cost, 74478585072604);
+}
+
 fn main() {
-    get_total_cost(&read_claws(&get_input("prelim.txt")));
-    get_total_cost(&read_claws(&get_input("input.txt")));
+    get_total_cost(&read_claws(&get_input("prelim.txt"), false));
+    get_total_cost(&read_claws(&get_input("input.txt"), false));
+    get_total_cost(&read_claws(&get_input("prelim.txt"), true));
+    get_total_cost(&read_claws(&get_input("input.txt"), true));
 }
