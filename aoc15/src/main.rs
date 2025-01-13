@@ -13,7 +13,7 @@ fn get_input(filename: &str) -> Vec<String> {
     lines
 }
 
-// Our input.txt is 50x50
+// Our input.txt is 50x50, but it doubles in width in part 2
 const MAX_DIM: usize = 120;
 type Grid = [[char; MAX_DIM]; MAX_DIM];
 
@@ -30,6 +30,9 @@ struct Warehouse {
     expand: bool,
     robot: Coord,
 
+    // This almost seems like it doesn't belong in this struct, due to having
+    // to clone it to iterate (while mutating the rest of the struct with
+    // other helper functions).
     moves: Vec<char>,
 }
 
@@ -97,7 +100,8 @@ impl Warehouse {
             moves,
         };
 
-        if !expand {
+        // We only need to look when we didn't expand, since it just copies memory
+        if !warehouse.expand {
             warehouse.robot = warehouse.find_robot();
         }
 
@@ -115,37 +119,6 @@ impl Warehouse {
         }
     }
 
-    // Returns true if pos is empty, or if we can free up space to make it empty
-    fn move_item(&mut self, dir: char, pos: Coord) -> bool {
-        let item = self.grid[pos.1][pos.0];
-        match item {
-            '.' => true,
-            '#' => false,
-            'O' | '@' | '[' | ']' => {
-                let new_pos = match dir {
-                    '<' => (pos.0 - 1, pos.1),
-                    '>' => (pos.0 + 1, pos.1),
-                    '^' => (pos.0, pos.1 - 1),
-                    'v' => (pos.0, pos.1 + 1),
-                    _ => {
-                        panic!("Unknown move direction {}", dir);
-                    }
-                };
-                if self.move_item(dir, new_pos) {
-                    self.grid[new_pos.1][new_pos.0] = item;
-                    self.grid[pos.1][pos.0] = '.';
-                    if item == '@' {
-                        self.robot = new_pos;
-                    }
-                    true
-                } else {
-                    false
-                }
-            }
-            _ => panic!("Unknown contents at {:?}: {}", pos, self.grid[pos.1][pos.0]),
-        }
-    }
-
     fn get_next_coord(dir: char, pos: Coord) -> Coord {
         match dir {
             '<' => (pos.0 - 1, pos.1),
@@ -156,49 +129,76 @@ impl Warehouse {
         }
     }
 
-    fn move_item2(&mut self, dir: char, pos: Coord, just_check: bool) -> bool {
-        if dir == '<' || dir == '>' {
-            return self.move_item(dir, pos);
+    fn update_grid(&mut self, pos: Coord, item: char) {
+        self.grid[pos.1][pos.0] = item;
+        if item == '@' {
+            self.robot = pos;
         }
+    }
+
+    fn move_item(&mut self, dir: char, pos: Coord, just_check: bool) -> bool {
         let item = self.grid[pos.1][pos.0];
-        let new_pos = Self::get_next_coord(dir, pos);
         match item {
             '.' => true,
             '#' => false,
             'O' | '@' => {
-                if self.move_item2(dir, new_pos, just_check) {
-                    self.grid[new_pos.1][new_pos.0] = item;
-                    self.grid[pos.1][pos.0] = '.';
-                    if item == '@' {
-                        self.robot = new_pos;
-                    }
+                let new_pos = Self::get_next_coord(dir, pos);
+                if self.move_item(dir, new_pos, just_check) {
+                    self.update_grid(pos, '.');
+                    self.update_grid(new_pos, item);
                     true
                 } else {
                     false
                 }
             }
             '[' => {
-                // We need to check both halves
-                if self.move_item2(dir, new_pos, true) {
-                    let new_neighbor = Self::get_next_coord(dir, (pos.0 + 1, pos.1));
-                    if self.move_item2(dir, new_neighbor, true) {
+                let new_l_pos = Self::get_next_coord(dir, pos);
+                if dir == '<' {
+                    let old_r_pos = (pos.0 + 1, pos.1);
+                    let new_r_pos = pos;
+                    if self.move_item(dir, new_l_pos, just_check) {
+                        self.update_grid(old_r_pos, '.');
+                        self.update_grid(new_l_pos, '[');
+                        self.update_grid(new_r_pos, ']');
+                        return true;
+                    } else {
+                        return false;
+                    }
+                } else if dir == '>' {
+                    // Skip ahead over the right side of the box in this case
+                    let empty_pos = (pos.0 - 1, pos.1);
+                    let new_r_pos = Self::get_next_coord(dir, new_l_pos);
+                    if self.move_item(dir, new_r_pos, just_check) {
+                        self.update_grid(empty_pos, '.');
+                        self.update_grid(new_l_pos, '[');
+                        self.update_grid(new_r_pos, ']');
+                        return true;
+                    } else {
+                        return false;
+                    }
+                } else if self.move_item(dir, new_l_pos, true) {
+                    // We need to check both halves
+                    let old_l_pos = pos;
+                    let old_r_pos = (pos.0 + 1, pos.1);
+                    let new_r_pos = Self::get_next_coord(dir, old_r_pos);
+                    if self.move_item(dir, new_r_pos, true) {
                         if just_check {
                             return true;
                         }
-                        self.move_item2(dir, new_pos, false);
-                        self.move_item2(dir, new_neighbor, false);
-                        self.grid[pos.1][pos.0] = '.';
-                        self.grid[pos.1][pos.0 + 1] = '.';
-                        self.grid[new_pos.1][new_pos.0] = '[';
-                        self.grid[new_pos.1][new_pos.0 + 1] = ']';
+                        self.move_item(dir, new_l_pos, false);
+                        self.move_item(dir, new_r_pos, false);
+                        self.update_grid(old_l_pos, '.');
+                        self.update_grid(old_r_pos, '.');
+                        self.update_grid(new_l_pos, '[');
+                        self.update_grid(new_r_pos, ']');
                         return true;
                     }
                 }
                 false
             }
             ']' => {
-                // Forward operation back to the '[' case instead
-                self.move_item2(dir, (pos.0 - 1, pos.1), just_check)
+                // Forward operation to the '[' case instead.
+                self.move_item(dir, (pos.0 - 1, pos.1), just_check)
             }
             _ => panic!("Unknown contents at {:?}: {}", pos, self.grid[pos.1][pos.0]),
         }
@@ -218,14 +218,13 @@ impl Warehouse {
     fn move_robot(&mut self) -> &Self {
         //self.print_grid();
         //println!("Robot: {:?}\n", self.robot);
+
+        // There's no great way (that I know) to handle iterating over the
+        // moves, while mutating the rest of the data structure itself.
         let moves = self.moves.clone();
         for dir in moves {
             //println!("Moving {dir}");
-            if self.expand {
-                self.move_item2(dir, self.robot, false);
-            } else {
-                self.move_item(dir, self.robot);
-            }
+            self.move_item(dir, self.robot, false);
             //self.print_grid();
             //println!();
         }
@@ -246,7 +245,8 @@ impl Warehouse {
             }
         }
 
-        println!("GPS: {gps}");
+        let expand = if self.expand { "(expand)" } else { "" };
+        println!("GPS{expand}: {gps}");
         gps
     }
 }
