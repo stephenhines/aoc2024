@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::collections::BinaryHeap;
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
@@ -25,7 +26,7 @@ const INVALID: char = ' ';
 
 type Coord = (usize, usize);
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum Facing {
     North,
     East,
@@ -33,7 +34,7 @@ enum Facing {
     West,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 struct Reindeer {
     pos: Coord,
     face: Facing,
@@ -41,15 +42,19 @@ struct Reindeer {
     rotates: usize,
 }
 
+// `Eq` and `PartialEq` need to be implemented.
+impl Eq for Reindeer {}
+impl PartialEq for Reindeer {
+    fn eq(&self, other: &Self) -> bool {
+        self.pos == other.pos && self.face == other.face
+    }
+}
+
 impl Ord for Reindeer {
     fn cmp(&self, other: &Self) -> Ordering {
-        // Notice that we flip the ordering on costs.
-        // In case of a tie we compare positions - this step is necessary
-        // to make implementations of `PartialEq` and `Ord` consistent.
-        other
-            .cost()
-            .cmp(&self.cost())
-            .then_with(|| self.pos.cmp(&other.pos))
+        self.pos
+            .cmp(&other.pos)
+            .then_with(|| self.face.cmp(&other.face))
     }
 }
 
@@ -156,7 +161,40 @@ fn possible_moves(grid: &Grid, r: Reindeer) -> Vec<Reindeer> {
     possible_moves
 }
 
-fn dijkstra(grid: &Grid, start: Coord, end: Coord) -> usize {
+#[derive(Eq, PartialEq)]
+struct State {
+    r: Reindeer,
+    path: Vec<Coord>,
+}
+
+impl Ord for State {
+    fn cmp(&self, other: &Self) -> Ordering {
+        // Notice that we flip the ordering on costs.
+        // In case of a tie we compare positions - this step is necessary
+        // to make implementations of `PartialEq` and `Ord` consistent.
+        other
+            .r
+            .cost()
+            .cmp(&self.r.cost())
+            .then_with(|| self.r.cmp(&other.r))
+    }
+}
+
+// `PartialOrd` needs to be implemented as well.
+impl PartialOrd for State {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+type DistType = BTreeMap<Reindeer, usize>;
+type PrevType = BTreeMap<Coord, HashSet<Coord>>;
+
+type HeapType = BinaryHeap<State>;
+type PathsType = Vec<Vec<Coord>>;
+
+// Returns the dist, prev entries
+fn dijkstra(grid: &Grid, start: Coord, end: Coord) -> (usize, DistType, PrevType, PathsType) {
     /*
         Based on https://doc.rust-lang.org/nightly/std/collections/binary_heap/index.html
         and https://en.wikipedia.org/wiki/Dijkstra%27s_algorithm
@@ -185,35 +223,62 @@ fn dijkstra(grid: &Grid, start: Coord, end: Coord) -> usize {
         22
         23      return dist, prev
     */
-    let mut heap = BinaryHeap::new();
-    let mut dist = BTreeMap::new();
+    let mut heap: HeapType = BinaryHeap::new();
+    let mut dist: DistType = BTreeMap::new();
 
-    dist.insert(start, 0);
-    heap.push(Reindeer::new(start, Facing::East));
+    // We'll keep track of all valid predecessors
+    let mut prev: PrevType = BTreeMap::new();
+
+    let r = Reindeer::new(start, Facing::East);
+    dist.insert(r, 0);
+    heap.push(State {
+        r,
+        path: vec![start],
+    });
+
+    let mut score = usize::MAX;
+    let mut paths = Vec::new();
 
     // Examine the frontier with lower cost nodes first (min-heap)
-    while let Some(r) = heap.pop() {
-        // Alternatively we could have continued to find all shortest paths
-        if r.pos == end {
-            return r.cost();
-        }
-
+    while let Some(State { r, path }) = heap.pop() {
         // Important as we may have already found a better way
-        let &prev_cost = dist.get(&r.pos).unwrap_or(&usize::MAX);
+        let &prev_cost = dist.get(&r).unwrap_or(&usize::MAX);
         if r.cost() > prev_cost {
             continue;
         }
 
+        // Alternatively we could have continued to find all shortest paths
+        if r.pos == end && r.cost() <= score {
+            score = r.cost();
+            paths.push(path.clone());
+        }
+
         for r_move in possible_moves(grid, r) {
-            let &prev_next_cost = dist.get(&r_move.pos).unwrap_or(&usize::MAX);
-            if r_move.cost() < prev_next_cost {
-                heap.push(r_move);
-                // Relaxation, we have now found a better way
-                dist.insert(r_move.pos, r_move.cost());
+            let &past_move_cost = dist.get(&r_move).unwrap_or(&usize::MAX);
+            if r_move.cost() <= past_move_cost {
+                let mut new_path = path.clone();
+                new_path.push(r_move.pos);
+                heap.push(State {
+                    r: r_move,
+                    path: new_path,
+                });
+                if r_move.cost() == past_move_cost {
+                    //println!("Updating predecessors");
+                    let prior_set = prev.get_mut(&r_move.pos).unwrap();
+                    prior_set.insert(r.pos);
+                } else {
+                    // Relaxation, we have now found a better way
+                    let mut new_set = HashSet::new();
+                    // We create a new set with just the single predecessor here
+                    new_set.insert(r.pos);
+                    prev.insert(r_move.pos, new_set);
+                }
+                dist.insert(r_move, r_move.cost());
             }
         }
     }
-    0
+
+    (score, dist, prev, paths)
 }
 
 #[derive(Debug)]
@@ -262,6 +327,22 @@ impl Maze {
         }
     }
 
+    #[allow(dead_code)]
+    fn print_grid2(&self, tiles: &HashSet<Coord>) {
+        println!("width: {} height: {}", self.width, self.height);
+        println!("start: {:?} end: {:?}", self.start, self.end);
+        for y in 0..self.height {
+            for x in 0..self.width {
+                if tiles.contains(&(x, y)) {
+                    print!("O");
+                } else {
+                    print!("{}", self.grid[y][x]);
+                }
+            }
+            println!();
+        }
+    }
+
     fn find(&self, c: char) -> Coord {
         for y in 0..self.height {
             for x in 0..self.width {
@@ -274,9 +355,37 @@ impl Maze {
     }
 
     fn best_score(&self) -> usize {
-        let score = dijkstra(&self.grid, self.start, self.end);
+        let (score, _, _, _) = dijkstra(&self.grid, self.start, self.end);
+
         println!("Score: {score}");
         score
+    }
+
+    fn best_path_tiles(&self) -> usize {
+        /*let (_, prev, _) = dijkstra(&self.grid, self.start, self.end);
+
+        let mut tiles = HashSet::new();
+        let mut work_vec = Vec::new();
+        work_vec.push(self.end);
+        while let Some(pos) = work_vec.pop() {
+            tiles.insert(pos);
+            if let Some(preds) = prev.get(&pos) {
+                preds.iter().for_each(|&x| work_vec.push(x));
+            }
+        }*/
+
+        let (_, _, _, paths) = dijkstra(&self.grid, self.start, self.end);
+
+        let mut tiles = HashSet::new();
+        for path in paths {
+            for tile in path {
+                tiles.insert(tile);
+            }
+        }
+
+        //self.print_grid2(&tiles);
+        println!("Best path tiles: {}", tiles.len());
+        tiles.len()
     }
 }
 
@@ -292,9 +401,22 @@ fn test_part1() {
     assert_eq!(score, 95444);
 }
 
+#[test]
+fn test_prelim2() {
+    let tiles = Maze::new(&get_input("prelim.txt")).best_path_tiles();
+    assert_eq!(tiles, 45);
+}
+
+#[test]
+fn test_part2() {
+    let tiles = Maze::new(&get_input("input.txt")).best_path_tiles();
+    assert_eq!(tiles, 513);
+}
+
 fn main() {
     let maze = Maze::new(&get_input("prelim.txt"));
     maze.best_score();
-    maze.print_grid();
     Maze::new(&get_input("input.txt")).best_score();
+    maze.best_path_tiles();
+    Maze::new(&get_input("input.txt")).best_path_tiles();
 }
