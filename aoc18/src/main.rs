@@ -187,6 +187,7 @@ struct Memory {
     start: Coord,
     end: Coord,
     corrupted: Vec<Coord>,
+    num_corrupted: usize,
 }
 
 impl Memory {
@@ -196,12 +197,14 @@ impl Memory {
         let height = dim;
         let width = dim;
         let mut corrupted = Vec::new();
+        let num_corrupted = 0;
 
         // Create borders around everything
         for x in 0..=width {
             grid[0][x] = INVALID;
             grid[dim][x] = INVALID;
         }
+        #[allow(clippy::needless_range_loop)]
         for y in 1..=height {
             grid[y][0] = INVALID;
             grid[y][dim] = INVALID;
@@ -223,6 +226,7 @@ impl Memory {
             start,
             end,
             corrupted,
+            num_corrupted,
         }
     }
 
@@ -238,34 +242,76 @@ impl Memory {
         }
     }
 
-    #[allow(dead_code)]
-    fn print_grid2(&self, tiles: &HashSet<Coord>) {
-        println!("width: {} height: {}", self.width, self.height);
-        println!("start: {:?} end: {:?}", self.start, self.end);
-        for y in 0..self.height {
-            for x in 0..self.width {
-                if tiles.contains(&(x, y)) {
-                    print!("O");
-                } else {
-                    print!("{}", self.grid[y][x]);
-                }
+    fn reset_grid(&mut self) {
+        for y in 1..self.height {
+            for x in 1..self.width {
+                self.grid[y][x] = '.';
             }
-            println!();
         }
+        self.num_corrupted = 0;
     }
 
     fn corrupt(&mut self, num: usize) -> &mut Self {
-        for &(x, y) in self.corrupted.iter().take(num) {
-            self.grid[y+1][x+1] = INVALID;
+        if self.num_corrupted + num > self.corrupted.len() {
+            panic!("Attempt to corrupt too far");
         }
+        for &(x, y) in self.corrupted[self.num_corrupted..].iter().take(num) {
+            self.grid[y + 1][x + 1] = INVALID;
+        }
+        self.num_corrupted += num;
         self
     }
 
     fn shortest_path(&self) -> usize {
         let (steps, _, _, _) = dijkstra(&self.grid, self.start, self.end);
+        steps
+    }
 
+    fn shortest_path_verbose(&self) -> usize {
+        let steps = self.shortest_path();
         println!("Steps: {steps}");
         steps
+    }
+
+    fn get_corrupt_coord(&mut self, base_corrupt: usize) -> Coord {
+        let mut lower = base_corrupt;
+        let mut upper = self.corrupted.len();
+        self.reset_grid();
+        if self.corrupt(lower).shortest_path() == usize::MAX {
+            panic!("Lower bound doesn't work");
+        }
+        self.reset_grid();
+        if self.corrupt(upper).shortest_path() != usize::MAX {
+            panic!("Upper bound doesn't work");
+        }
+
+        loop {
+            if upper == lower + 1 {
+                self.reset_grid();
+                if self.corrupt(lower).shortest_path() == usize::MAX {
+                    panic!("Lower bound doesn't work");
+                }
+                self.reset_grid();
+                if self.corrupt(upper).shortest_path() != usize::MAX {
+                    panic!("Upper bound doesn't work");
+                }
+
+                break;
+            }
+            let c = (upper + lower) / 2;
+            self.reset_grid();
+            self.corrupt(c);
+            let steps = self.shortest_path();
+            if steps == usize::MAX {
+                upper = c;
+            } else {
+                lower = c;
+            }
+        }
+
+        let point = self.corrupted[lower];
+        println!("corrupt: {:?}", point);
+        point
     }
 }
 
@@ -273,20 +319,44 @@ impl Memory {
 fn test_prelim() {
     let mut memory = Memory::new(&get_input("prelim.txt"), 8);
     memory.corrupt(12);
-    let steps = memory.shortest_path();
+    let steps = memory.shortest_path_verbose();
     assert_eq!(steps, 22);
 }
 
 #[test]
 fn test_part1() {
-    let steps = Memory::new(&get_input("input.txt"), 72).corrupt(1024).shortest_path();
+    let steps = Memory::new(&get_input("input.txt"), 72)
+        .corrupt(1024)
+        .shortest_path_verbose();
     assert_eq!(steps, 252);
 }
 
-fn main() {
+#[test]
+fn test_prelim2() {
     let mut memory = Memory::new(&get_input("prelim.txt"), 8);
-    memory.corrupt(12);
-    memory.print_grid();
-    memory.shortest_path();
-    Memory::new(&get_input("input.txt"), 72).corrupt(1024).shortest_path();
+    let pos = memory.get_corrupt_coord(12);
+    assert_eq!(pos, (6, 1));
+}
+
+#[test]
+fn test_part2() {
+    let mut memory = Memory::new(&get_input("input.txt"), 72);
+    let pos = memory.get_corrupt_coord(1024);
+    assert_eq!(pos, (5, 60));
+}
+
+fn main() {
+    let mut mem = Memory::new(&get_input("prelim.txt"), 8);
+        mem.corrupt(12)
+        .shortest_path_verbose();
+    mem.print_grid();
+    Memory::new(&get_input("input.txt"), 72)
+        .corrupt(1024)
+        .shortest_path_verbose();
+
+    let mut memory = Memory::new(&get_input("prelim.txt"), 8);
+    memory.get_corrupt_coord(12);
+
+    let mut memory = Memory::new(&get_input("input.txt"), 72);
+    memory.get_corrupt_coord(1024);
 }
