@@ -14,6 +14,8 @@ fn get_input(filename: &str) -> Vec<String> {
     lines
 }
 
+type LookupType<'a> = HashMap<&'a [char], usize>;
+
 struct Onsen {
     patterns: Vec<Vec<char>>,
     designs: Vec<Vec<char>>,
@@ -37,34 +39,36 @@ impl Onsen {
     }
 
     // lookup is how we memoize our already seen results
-    fn check<'a>(&self, design: &'a [char], lookup: &mut HashMap<&'a [char], bool>) -> bool {
+    fn check<'a>(&self, design: &'a [char], lookup: &mut LookupType<'a>) -> usize {
         //println!("Checking {:?}", design);
         if design.is_empty() {
-            return true;
+            return 1;
         }
 
         if lookup.contains_key(design) {
             return *lookup.get(design).unwrap();
         }
 
+        let mut valid = 0;
         for pattern in &self.patterns {
-            if design.starts_with(pattern) && self.check(&design[pattern.len()..], lookup) {
-                lookup.insert(design, true);
-                return true;
+            if design.starts_with(pattern) {
+                valid += self.check(&design[pattern.len()..], lookup);
             }
         }
 
-        // We didn't find a viable pattern this time
-        lookup.insert(design, false);
-        false
+        lookup.insert(design, valid);
+        valid
     }
 
-    fn check_designs(&self) -> usize {
+    fn check_designs(&self, all: bool) -> usize {
         let mut valid = 0;
-        let mut lookup: HashMap<&[char], bool> = HashMap::new();
+        let mut lookup: LookupType = HashMap::new();
 
         for design in &self.designs {
-            if self.check(design, &mut lookup) {
+            let v = self.check(design, &mut lookup);
+            if all {
+                valid += v;
+            } else if v > 0 {
                 valid += 1;
             }
         }
@@ -76,17 +80,31 @@ impl Onsen {
 
 #[test]
 fn test_prelim() {
-    let valid = Onsen::new(&get_input("prelim.txt")).check_designs();
+    let valid = Onsen::new(&get_input("prelim.txt")).check_designs(false);
     assert_eq!(valid, 6);
 }
 
 #[test]
 fn test_part1() {
-    let valid = Onsen::new(&get_input("input.txt")).check_designs();
+    let valid = Onsen::new(&get_input("input.txt")).check_designs(false);
     assert_eq!(valid, 327);
 }
 
+#[test]
+fn test_prelim2() {
+    let valid = Onsen::new(&get_input("prelim.txt")).check_designs(true);
+    assert_eq!(valid, 16);
+}
+
+#[test]
+fn test_part2() {
+    let valid = Onsen::new(&get_input("input.txt")).check_designs(true);
+    assert_eq!(valid, 772696486795255);
+}
+
 fn main() {
-    Onsen::new(&get_input("prelim.txt")).check_designs();
-    Onsen::new(&get_input("input.txt")).check_designs();
+    Onsen::new(&get_input("prelim.txt")).check_designs(false);
+    Onsen::new(&get_input("input.txt")).check_designs(false);
+    Onsen::new(&get_input("prelim.txt")).check_designs(true);
+    Onsen::new(&get_input("input.txt")).check_designs(true);
 }
